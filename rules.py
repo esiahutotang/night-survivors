@@ -41,9 +41,10 @@ class Gem:
 
 
 class Game:
-    def __init__(self, config=None, seed=None):
+    def __init__(self, config=None, seed=None, card_seed=None):
         self.config = config if config is not None else load_config()
         self.rng = random.Random(seed)
+        self.card_rng = self.rng if card_seed is None else random.Random(card_seed)
         self.x = self.y = self.elapsed = 0.0
         self.hp = self.config["hero"]["hp"]
         self.enemies = []
@@ -169,9 +170,9 @@ class Game:
             self.cards = ["heal"] * count
         else:
             # Offer distinct choices when possible. Near the cap, repeat only eligible choices.
-            self.cards = self.rng.sample(pool, min(count, len(pool)))
+            self.cards = self.card_rng.sample(pool, min(count, len(pool)))
             while len(self.cards) < count:
-                self.cards.append(self.rng.choice(pool))
+                self.cards.append(self.card_rng.choice(pool))
 
     def choose_card(self, index):
         if self.finished or not 0 <= index < len(self.cards):
