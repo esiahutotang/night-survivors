@@ -1,0 +1,46 @@
+{
+  "art": {"scale": 3},
+  "feel": {"number_lifetime": 0.65, "number_rise_speed": 42, "number_offset": 28, "hurt_number_offset_x": -20, "hit_number_offset_x": 12, "flash_lifetime": 0.14, "shake_duration": 0.18, "shake_pixels": 3, "shake_frequency": 38, "max_numbers": 160, "max_flashes": 120},
+  "audio": {
+    "sample_rate": 22050, "volume": 0.35, "fade_seconds": 0.006,
+    "clips": {
+      "hit": {"notes": [[620, 180, 0.07]], "noise": 0.22},
+      "gem": {"notes": [[880, 1100, 0.045], [1320, 1600, 0.07]], "noise": 0},
+      "level_up": {"notes": [[523, 523, 0.08], [659, 659, 0.08], [784, 784, 0.08], [1047, 1047, 0.16]], "noise": 0},
+      "hurt": {"notes": [[190, 65, 0.18]], "noise": 0.3},
+      "victory": {"notes": [[523, 523, 0.1], [659, 659, 0.1], [784, 784, 0.1], [1047, 1047, 0.28]], "noise": 0},
+      "game_over": {"notes": [[392, 330, 0.12], [294, 220, 0.14], [196, 98, 0.24]], "noise": 0.04}
+    }
+  },
+  "simulation": {"step": 0.016666666666666666, "max_frame_time": 0.25},
+  "screen": {"width": 390, "height": 700, "fps": 60, "floor_tile": 48},
+  "controls": {"stop_distance": 12},
+  "hero": {"speed": 120, "hp": 100, "radius": 12, "magnet_radius": 60},
+  "contact_interval": 0.5,
+  "spawn": {"interval": 1, "per_second": 8, "radius": 380, "remove_distance": 700, "boss_return_distance": 600, "cap": 120},
+  "enemies": {
+    "bat": {"hp": 8, "speed": 100, "damage": 5, "xp": 1, "radius": 10},
+    "slime": {"hp": 30, "speed": 55, "damage": 8, "xp": 2, "radius": 10},
+    "ghost": {"hp": 15, "speed": 135, "damage": 6, "xp": 2, "radius": 10},
+    "demon": {"hp": 800, "speed": 85, "damage": 20, "xp": 0, "radius": 20, "draw_scale": 2}
+  },
+  "weapons": {
+    "max_owned": 3, "max_level": 5,
+    "spark": {"speed": 400, "damage": 20, "interval": 0.8, "count": 1, "damage_per_level": 3, "interval_per_level": 0.08, "extra_spark_levels": [3, 5], "radius": 4, "lifetime": 2},
+    "blades": {"orbit_radius": 60, "period": 1.5, "hit_interval": 0.5, "hit_radius": 12, "count": 2, "damage": 8, "damage_per_level": 3, "extra_blade_levels": [2, 4]},
+    "ring": {"interval": 0.5, "damage": 5, "radius": 50, "damage_per_level": 2, "radius_per_level": 10}
+  },
+  "passives": {"max_level": 5, "boots_speed_fraction": 0.1, "heart_hp": 20, "heart_heal": 20, "magnet_radius": 30},
+  "growth": {"gem_speed": 300, "initial_xp": 5, "xp_per_level": 3, "cards": 3, "fallback_heal": 30},
+  "waves": [
+    {"from": 0, "types": ["bat"], "minimum": 12},
+    {"from": 15, "types": ["bat"], "minimum": 20},
+    {"from": 30, "types": ["bat", "slime"], "minimum": 28},
+    {"from": 45, "types": ["slime", "ghost"], "minimum": 36},
+    {"from": 60, "types": ["bat", "ghost"], "minimum": 45},
+    {"from": 75, "types": ["bat", "slime", "ghost"], "minimum": 55},
+    {"from": 90, "types": ["bat", "slime"], "minimum": 55, "boss": true},
+    {"from": 105, "types": ["bat"], "minimum": 75}
+  ],
+  "goal": {"survive_seconds": 120}
+}
