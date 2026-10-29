@@ -6,7 +6,7 @@ enemies come from every side, you grow stronger every level. Names, numbers and 
 ## Goal
 - Survive until **2:00**: then the game shows VICTORY.
 - Hero HP reaches 0: GAME OVER.
-- Click or tap the end screen to play again.
+- Use Retry on the end screen to play again, or Home to choose a mode.
 
 ## Screen and controls
 - Window 390 x 700 (portrait, like a phone). The camera follows the hero.
@@ -89,3 +89,18 @@ An enemy that touches the hero hurts him at most once every 0.5 s.
 5. **Sound and feel:** make_sounds.py (standard library only) makes short sounds for hits,
    gems, level-up, getting hurt and the end; damage numbers, a flash when an enemy dies,
    a small shake when the hero is hurt.
+
+## Daily Challenge and personal records
+
+Choose Normal or Daily Challenge on the home screen. Normal follows the tables
+above. Daily applies one preset from data/challenges.json to a copy of these
+rules, with date-based seeds and separate spawn/upgrade random streams.
+Challenge dates reset at UTC+8 midnight. A running game keeps its original date
+and preset; retry uses the current date. The survive-to-win goal stays 2:00.
+
+Best completed runs compare (victory, survival time in milliseconds, kills,
+level), descending. Normal, each daily date, and each preset's historical best
+are separate, and gameplay/rules versions are isolated. The end screen saves
+once, highlights a new best, and offers Retry and Home. The home screen lists
+personal bests. Saves are local to this browser/site or desktop folder, with
+an explicit session-only message when persistent storage is unavailable.

@@ -18,8 +18,10 @@ seen_events = set()
 
 
 class ObservedGame(Game):
-    def __init__(self, config):
-        super().__init__(config, seed=7)
+    def __init__(self, config, **kwargs):
+        if not kwargs:
+            kwargs["seed"] = 7
+        super().__init__(config, **kwargs)
         instances.append(self)
 
     def drain_events(self):
@@ -39,6 +41,9 @@ def post(kind, **fields):
 
 async def exercise_input():
     await frames(5)
+    pygame.image.save(pygame.display.get_surface(), Path(tempfile.gettempdir()) / 'night-survivors-home.png')
+    post(pygame.MOUSEBUTTONDOWN, pos=(195, 210), button=1, touch=False)
+    await frames(3)
     game = instances[-1]
     post(pygame.MOUSEMOTION, pos=(330, 350), rel=(135, 0), buttons=(0, 0, 0), touch=False)
     await frames(30)
@@ -111,13 +116,13 @@ async def exercise_input():
     game.enemies = [Enemy(game.x, game.y, bat_stats["hp"])]
     await frames(2)
     assert game.game_over, "Lethal damage must end play"
-    post(pygame.MOUSEBUTTONDOWN, pos=(195, 350), button=1, touch=False)
+    post(pygame.MOUSEBUTTONDOWN, pos=(195, 505), button=1, touch=False)
     await frames(2)
     assert instances[-1] is not game and instances[-1].hp == game.config["hero"]["hp"]
     instances[-1].game_over = True
-    post(pygame.FINGERDOWN, finger_id=2, touch_id=1, x=0.5, y=0.5)
+    post(pygame.FINGERDOWN, finger_id=2, touch_id=1, x=0.5, y=505/700)
     await frames(2)
-    assert len(instances) == 3 and not instances[-1].game_over
+    assert len(instances) == 4 and not instances[-1].game_over
     victory_preview = Path(tempfile.gettempdir()) / "night-survivors-victory.png"
     for input_kind in ("mouse", "touch"):
         winner = instances[-1]
@@ -129,13 +134,43 @@ async def exercise_input():
         await frames(2)
         assert not winner.paused, "P must not pause a finished game"
         if input_kind == "mouse":
-            post(pygame.MOUSEBUTTONDOWN, pos=(195, 350), button=1, touch=False)
+            post(pygame.MOUSEBUTTONDOWN, pos=(195, 505), button=1, touch=False)
         else:
-            post(pygame.FINGERDOWN, finger_id=7, touch_id=1, x=0.5, y=0.5)
+            post(pygame.FINGERDOWN, finger_id=7, touch_id=1, x=0.5, y=505/700)
         await frames(2)
         fresh = instances[-1]
         assert fresh is not winner and not fresh.finished and not fresh.boss_spawned
         assert fresh.hp == fresh.max_hp and fresh.level == 1
+    # Navigate through the actual daily menu with touch, then retry and return.
+    fresh.victory = True
+    await frames(2)
+    post(pygame.FINGERDOWN, finger_id=10, touch_id=1, x=0.5, y=575/700)
+    await frames(2)
+    post(pygame.FINGERDOWN, finger_id=11, touch_id=1, x=0.5, y=275/700)
+    await frames(2)
+    daily = instances[-1]
+    assert daily is not fresh and daily.card_rng is not daily.rng
+    config = daily.config
+    daily.gain_xp(daily.xp_needed)
+    cards = daily.cards[:]
+    daily.cards = []
+    daily.victory = True
+    daily.elapsed = daily.config['goal']['survive_seconds']
+    await frames(3)
+    pygame.image.save(pygame.display.get_surface(), Path(tempfile.gettempdir()) / 'night-survivors-daily-result.png')
+    post(pygame.MOUSEBUTTONDOWN, pos=(195, 505), button=1, touch=False)
+    await frames(2)
+    retry = instances[-1]
+    assert retry is not daily and retry.config == config
+    retry.gain_xp(retry.xp_needed)
+    assert retry.cards == cards, 'Daily retry must repeat upgrade seed'
+    retry.cards = []
+    retry.game_over = True
+    await frames(2)
+    post(pygame.MOUSEBUTTONDOWN, pos=(195, 575), button=1, touch=False)
+    await frames(2)
+    pygame.image.save(pygame.display.get_surface(), Path(tempfile.gettempdir()) / 'night-survivors-records.png')
+    print('PASS: home mode selection, daily retry seed, saved daily/normal results and return home')
     print("PASS: persistent mouse movement, clicks, touch move/release, pause, mouse restart, touch restart")
     print("PASS: level-up freezes play; mouse and touch cards apply upgrades; all weapons and gems render")
     print(f"Card preview: {card_preview}")
@@ -148,12 +183,16 @@ async def exercise_input():
 
 async def check():
     app.Game = ObservedGame
+    from records import Records
+    temporary = tempfile.TemporaryDirectory()
+    app.Records = lambda: Records(path=Path(temporary.name) / 'records.json')
     task = asyncio.create_task(app.main())
     try:
         await exercise_input()
     finally:
         post(pygame.QUIT)
         await task
+        temporary.cleanup()
 
 
 if __name__ == "__main__":

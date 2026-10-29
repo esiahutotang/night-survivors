@@ -8,7 +8,7 @@
 Play online: https://esiahutotang.github.io/night-survivors/
 On a phone, wait for the first download, then tap the page to start and enable
 sound. Hold and drag a finger to walk; lift it to stop. Tap upgrade cards and
-the end screen as usual. The page keeps the game's portrait proportions.
+the end-screen buttons as usual. Choose Normal or Daily Challenge on the home screen. The page keeps the game's portrait proportions.
 
 Install `pygame-ce` with `py -3.13 -m pip install pygame-ce`, then run
 `py -3.13 main.py` from this folder.
@@ -22,7 +22,7 @@ Add Spin Blades or Holy Ring, improve your weapons, or gain speed, HP or magnet
 range. Weapons and passive items each reach level 5. The HP and XP bars are at
 the top, and your equipment levels are at the bottom.
 Survive until 2:00 to win. The timer pauses while choosing upgrades or pressing
-P to pause. At VICTORY or GAME OVER, click or tap to start again.
+P to pause. At VICTORY or GAME OVER, use the retry or home button.
 
 Waves follow the complete table in GAME.md, bringing Bats, Slimes and faster
 Ghosts. The Demon appears once at 1:30, drawn twice as big. You only need to
@@ -86,3 +86,36 @@ current and next level, plus actual before/after stats from data/game.json.
 New weapons show their starting stats; healing previews respect missing HP.
 Weapon previews use the same stat calculation as combat and do not change the
 game, its random state, or its balance. The full card remains a mouse/touch target.
+
+## Daily challenges and personal bests
+
+The home screen offers Normal and Daily Challenge. Daily rules change at midnight
+in Beijing time (UTC+8). Four presets rotate: Swift Night (both sides +20% speed),
+Gem Harvest (double pickup range, enemies +30% HP), Tough Trial (70 starting HP,
+weapons +25% base and per-level damage), and Swarm (25% higher wave minimums,
+enemies 10% slower). Values and labels live in data/challenges.json. Normal mode
+keeps the original rules. Both modes last two minutes.
+
+The date and rules version determine stable enemy and upgrade seeds. Daily
+upgrade randomness is separate from enemy randomness. Repeating the same inputs
+and choices reproduces a run; different play can still change enemy locations
+and later upgrade eligibility. The date and preset stay fixed during a run,
+including across midnight. Retry starts the currently available day's challenge.
+Dates use the device clock; this is a personal challenge, not a verified contest.
+
+Completed runs are compared by victory, survived milliseconds, kills, then level
+(higher is better). A tie preserves the earlier record. The home screen shows
+Normal best, today's best, and historical best for today's challenge preset.
+Different presets are not ranked against each other. Gameplay/rules changes use
+a new record version; visual/audio changes do not. Final equipment is saved with
+each best run. Up to 90 daily entries and 100 versioned bests are kept.
+
+On the web, records use localStorage for the current browser and site address.
+Reloading keeps records, but another browser/device/site does not share them,
+and clearing site data removes them. Desktop runs use .userdata/records.json
+beside the game, written atomically. Personal saves are excluded from Git and
+browser builds. Nothing is sent to a server. If storage is blocked, full or
+unwritable, play continues and the screen says records last only this session.
+
+Run python -m unittest and python tools/smoke_check.py (optionally --no-audio).
+The smoke check uses an isolated temporary record file, never your real bests.
