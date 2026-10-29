@@ -126,9 +126,10 @@ class Game:
     def xp_needed(self):
         return self.config["growth"]["initial_xp"] + (self.level-1) * self.config["growth"]["xp_per_level"]
 
-    def weapon_stats(self, name):
+    def weapon_stats(self, name, level=None):
+        """Combat stats, or a read-only preview at an explicit level."""
         stats = self.config["weapons"][name].copy()
-        extra = self.weapons.get(name, 1) - 1
+        extra = (self.weapons.get(name, 1) if level is None else level) - 1
         stats["damage"] += extra * stats["damage_per_level"]
         if name == "spark":
             stats["interval"] -= extra * stats["interval_per_level"]

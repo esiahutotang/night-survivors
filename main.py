@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 import pygame
 from rules import Game, load_config
+from upgrade_ui import UpgradeUI
 
 
 class Feedback:
@@ -141,24 +142,7 @@ async def main():
     running = True
     card_rects = [pygame.Rect(20, 180 + i*132, width-40, 112)
                   for i in range(config["growth"]["cards"])]
-    names = {"spark": "火花魔杖", "blades": "回旋利刃", "ring": "神圣光环",
-             "boots": "疾风靴", "heart": "强健之心", "magnet": "磁铁", "heal": "治疗"}
-
-    def card_info(name):
-        level = (game.weapons.get(name, 0) if name in ("spark", "blades", "ring")
-                 else game.passives.get(name, 0)) + 1
-        cfg = config["passives"]
-        descriptions = {
-            "spark": "自动向附近敌人发射火花",
-            "blades": "利刃环绕自身，攻击附近敌人",
-            "ring": "持续伤害光环范围内的敌人",
-            "boots": f"移动速度增加 {cfg['boots_speed_fraction']*100:g}%",
-            "heart": f"生命上限 +{cfg['heart_hp']}，恢复 {cfg['heart_heal']} 生命",
-            "magnet": f"宝石吸取范围增加 {cfg['magnet_radius']} 像素",
-            "heal": f"恢复 {config['growth']['fallback_heal']} 点生命"}
-        heading = (f"恢复 {config['growth']['fallback_heal']} 点生命" if name == "heal"
-                   else f"{names[name]}  ·  {level} 级")
-        return heading, descriptions[name]
+    upgrade_ui = UpgradeUI(font_path)
 
     def choose_at(position):
         nonlocal pointer, finger, accumulator
@@ -278,9 +262,7 @@ async def main():
         pygame.draw.rect(screen, (74, 161, 255), (16, 85, round((width-120)*min(1, game.xp/game.xp_needed)), 8), border_radius=3)
         text(f"{game.level}级  {game.xp}/{game.xp_needed}", (width-96, 82), face=small)
         pygame.draw.rect(screen, (12, 18, 30), (0, height-94, width, 94))
-        short = {"spark": "魔杖", "blades": "利刃", "ring": "光环", "boots": "疾风靴", "heart": "强健之心", "magnet": "磁铁"}
-        text("   ".join(f"{short[n]} {v}" for n, v in game.weapons.items()), (16, height-82))
-        text("   ".join(f"{short[n]} {v}" for n, v in game.passives.items() if v), (16, height-56), face=small)
+        upgrade_ui.draw_equipment(screen, game, height)
         text("鼠标移动 / 按住屏幕行走 / P 暂停", (16, height-26), (147, 164, 187), small)
 
         if game.paused or game.finished or game.cards:
@@ -290,13 +272,7 @@ async def main():
             if game.cards:
                 text("升级！", (width//2, 110), (122, 232, 213), title, True)
                 text(f"达到 {game.level} 级，选择一项强化", (width//2, 146), centered=True)
-                for index, name in enumerate(game.cards):
-                    rect = card_rects[index]
-                    pygame.draw.rect(screen, (28, 43, 64), rect, border_radius=12)
-                    pygame.draw.rect(screen, (96, 196, 183), rect, 2, border_radius=12)
-                    heading, description = card_info(name)
-                    text(heading, (rect.x+16, rect.y+23))
-                    text(description, (rect.x+16, rect.y+61), (177, 195, 218), small)
+                upgrade_ui.draw_cards(screen, game, card_rects)
                 text("点击卡片，继续战斗", (width//2, 610), centered=True)
             elif game.finished:
                 text("生存胜利" if game.victory else "游戏结束", (width//2, height//2-55),
