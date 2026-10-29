@@ -1,5 +1,10 @@
 # Night Survivors — Step 5: Sound and feel
 
+界面已汉化：升级卡片、武器与道具、状态栏、暂停和结束画面均为简体中文。
+中文使用随游戏打包的站酷快乐体（SIL OFL 1.1），手机无需安装字体。
+字体来源：https://github.com/google/fonts/tree/main/ofl/zcoolkuaile
+授权文件：assets/OFL-ZCOOLKuaiLe.txt。汉化不改变游戏数值。
+
 Play online: https://esiahutotang.github.io/night-survivors/
 On a phone, wait for the first download, then tap the page to start and enable
 sound. Hold and drag a finger to walk; lift it to stop. Tap upgrade cards and

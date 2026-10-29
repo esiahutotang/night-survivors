@@ -114,7 +114,7 @@ async def main():
     pygame.init()
     width, height = config["screen"]["width"], config["screen"]["height"]
     screen = pygame.display.set_mode((width, height))
-    pygame.display.set_caption("Night Survivors — Sound and feel")
+    pygame.display.set_caption("暗夜幸存者")
     asset_dir = Path(__file__).resolve().parent / "assets"
     # Finished files only: Pillow and the asset builder stay outside the game.
     sprites = {path.stem: pygame.image.load(str(path)).convert_alpha()
@@ -127,9 +127,11 @@ async def main():
     if floor.get_size() != (floor_size, floor_size):
         floor = pygame.transform.scale(floor, (floor_size, floor_size))
     clock = pygame.time.Clock()
-    font = pygame.font.Font(None, 23)
-    small = pygame.font.Font(None, 19)
-    title = pygame.font.Font(None, 40)
+    # Packaged Chinese font works on desktop and phones without system fonts.
+    font_path = str(asset_dir / "ZCOOLKuaiLe-Regular.ttf")
+    font = pygame.font.Font(font_path, 21)
+    small = pygame.font.Font(font_path, 16)
+    title = pygame.font.Font(font_path, 34)
     feedback = Feedback(config, sprites)
     game = Game(config)
     center = (width // 2, height // 2)
@@ -139,23 +141,23 @@ async def main():
     running = True
     card_rects = [pygame.Rect(20, 180 + i*132, width-40, 112)
                   for i in range(config["growth"]["cards"])]
-    names = {"spark": "Spark Wand", "blades": "Spin Blades", "ring": "Holy Ring",
-             "boots": "Swift Boots", "heart": "Big Heart", "magnet": "Magnet", "heal": "Heal"}
+    names = {"spark": "火花魔杖", "blades": "回旋利刃", "ring": "神圣光环",
+             "boots": "疾风靴", "heart": "强健之心", "magnet": "磁铁", "heal": "治疗"}
 
     def card_info(name):
         level = (game.weapons.get(name, 0) if name in ("spark", "blades", "ring")
                  else game.passives.get(name, 0)) + 1
         cfg = config["passives"]
         descriptions = {
-            "spark": "Automatic sparks at nearby enemies",
-            "blades": "Orbiting blades strike nearby enemies",
-            "ring": "Repeated damage inside a holy circle",
-            "boots": f"+{cfg['boots_speed_fraction']*100:g}% walking speed",
-            "heart": f"+{cfg['heart_hp']} max HP, heal {cfg['heart_heal']}",
-            "magnet": f"+{cfg['magnet_radius']} px gem collection range",
-            "heal": f"Restore {config['growth']['fallback_heal']} HP"}
-        heading = (f"Heal {config['growth']['fallback_heal']} HP" if name == "heal"
-                   else f"{names[name]}  -  Lv {level}")
+            "spark": "自动向附近敌人发射火花",
+            "blades": "利刃环绕自身，攻击附近敌人",
+            "ring": "持续伤害光环范围内的敌人",
+            "boots": f"移动速度增加 {cfg['boots_speed_fraction']*100:g}%",
+            "heart": f"生命上限 +{cfg['heart_hp']}，恢复 {cfg['heart_heal']} 生命",
+            "magnet": f"宝石吸取范围增加 {cfg['magnet_radius']} 像素",
+            "heal": f"恢复 {config['growth']['fallback_heal']} 点生命"}
+        heading = (f"恢复 {config['growth']['fallback_heal']} 点生命" if name == "heal"
+                   else f"{names[name]}  ·  {level} 级")
         return heading, descriptions[name]
 
     def choose_at(position):
@@ -264,30 +266,30 @@ async def main():
         feedback.draw(screen, (origin_x, origin_y), font)
 
         pygame.draw.rect(screen, (12, 18, 30), (0, 0, width, 102))
-        text("NIGHT SURVIVORS", (16, 12), (122, 232, 213))
+        text("暗夜幸存者", (16, 12), (122, 232, 213))
         seconds = int(game.elapsed + 1e-9)
         goal = config["goal"]["survive_seconds"]
         text(f"{seconds//60}:{seconds%60:02d} / {goal//60}:{goal%60:02d}", (width-116, 14), face=small)
         pygame.draw.rect(screen, (67, 38, 53), (16, 43, width-32, 15), border_radius=5)
         pygame.draw.rect(screen, (235, 84, 111), (16, 43, round((width-32)*game.hp/game.max_hp), 15), border_radius=5)
-        text(f"HP {game.hp} / {game.max_hp}", (16, 64), face=small)
-        text(f"Kills {game.kills}", (width-90, 64), face=small)
+        text(f"生命 {game.hp} / {game.max_hp}", (16, 64), face=small)
+        text(f"击败 {game.kills}", (width-90, 64), face=small)
         pygame.draw.rect(screen, (30, 47, 76), (16, 85, width-120, 8), border_radius=3)
         pygame.draw.rect(screen, (74, 161, 255), (16, 85, round((width-120)*min(1, game.xp/game.xp_needed)), 8), border_radius=3)
-        text(f"Lv {game.level}  {game.xp}/{game.xp_needed}", (width-96, 82), face=small)
+        text(f"{game.level}级  {game.xp}/{game.xp_needed}", (width-96, 82), face=small)
         pygame.draw.rect(screen, (12, 18, 30), (0, height-94, width, 94))
-        short = {"spark": "Spark", "blades": "Blades", "ring": "Ring", "boots": "Boots", "heart": "Heart", "magnet": "Magnet"}
+        short = {"spark": "魔杖", "blades": "利刃", "ring": "光环", "boots": "疾风靴", "heart": "强健之心", "magnet": "磁铁"}
         text("   ".join(f"{short[n]} {v}" for n, v in game.weapons.items()), (16, height-82))
         text("   ".join(f"{short[n]} {v}" for n, v in game.passives.items() if v), (16, height-56), face=small)
-        text("Mouse to walk  |  Touch & hold  |  P pause", (16, height-26), (147, 164, 187), small)
+        text("鼠标移动 / 按住屏幕行走 / P 暂停", (16, height-26), (147, 164, 187), small)
 
         if game.paused or game.finished or game.cards:
             veil = pygame.Surface((width, height), pygame.SRCALPHA)
             veil.fill((6, 10, 20, 215))
             screen.blit(veil, (0, 0))
             if game.cards:
-                text("LEVEL UP", (width//2, 110), (122, 232, 213), title, True)
-                text(f"Level {game.level} - choose an upgrade", (width//2, 146), centered=True)
+                text("升级！", (width//2, 110), (122, 232, 213), title, True)
+                text(f"达到 {game.level} 级，选择一项强化", (width//2, 146), centered=True)
                 for index, name in enumerate(game.cards):
                     rect = card_rects[index]
                     pygame.draw.rect(screen, (28, 43, 64), rect, border_radius=12)
@@ -295,16 +297,16 @@ async def main():
                     heading, description = card_info(name)
                     text(heading, (rect.x+16, rect.y+23))
                     text(description, (rect.x+16, rect.y+61), (177, 195, 218), small)
-                text("Click or tap a card to continue", (width//2, 610), centered=True)
+                text("点击卡片，继续战斗", (width//2, 610), centered=True)
             elif game.finished:
-                text("VICTORY" if game.victory else "GAME OVER", (width//2, height//2-55),
+                text("生存胜利" if game.victory else "游戏结束", (width//2, height//2-55),
                      (122, 232, 213) if game.victory else (255, 138, 155), title, True)
                 seconds = int(game.elapsed + 1e-9)
-                text(f"Time {seconds//60}:{seconds%60:02d} | Kills {game.kills} | Lv {game.level}", (width//2, height//2), centered=True)
-                text("Click or tap to play again", (width//2, height//2+46), centered=True)
+                text(f"用时 {seconds//60}:{seconds%60:02d} | 击败 {game.kills} | {game.level}级", (width//2, height//2), centered=True)
+                text("点击屏幕，再玩一次", (width//2, height//2+46), centered=True)
             else:
-                text("PAUSED", (width//2, height//2-55), (122, 232, 213), title, True)
-                text("Press P to continue", (width//2, height//2), centered=True)
+                text("已暂停", (width//2, height//2-55), (122, 232, 213), title, True)
+                text("按 P 继续游戏", (width//2, height//2), centered=True)
         pygame.display.flip()
         await asyncio.sleep(0)
     pygame.quit()
