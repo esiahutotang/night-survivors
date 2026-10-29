@@ -76,3 +76,13 @@ game package. `default.tmpl` provides the portrait layout and tap-to-start
 message. Commit the updated docs files and push main to update GitHub Pages.
 Pages must use the main branch and /docs folder. The first visit downloads the
 Python runtime from pygbag's CDN, so it takes longer than later visits.
+
+## Upgrade cards
+
+Upgrade cards and the equipment bar share seven original pixel icons, drawn once
+at startup with pygame (no new asset or runtime dependencies). Cards distinguish
+new weapons, weapon upgrades, passive upgrades and healing. Each card shows the
+current and next level, plus actual before/after stats from data/game.json.
+New weapons show their starting stats; healing previews respect missing HP.
+Weapon previews use the same stat calculation as combat and do not change the
+game, its random state, or its balance. The full card remains a mouse/touch target.
