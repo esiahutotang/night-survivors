@@ -19,7 +19,7 @@ def load_challenges():
 
 def version_id(config, definitions):
     # Ignore presentation changes; isolate records when gameplay or daily rules change.
-    rules = {k: v for k, v in config.items() if k not in ('art', 'audio', 'feel', 'screen')}
+    rules = {k: v for k, v in config.items() if k not in ('art', 'audio', 'feel', 'screen', 'skins')}
     payload = json.dumps([rules, definitions], sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 

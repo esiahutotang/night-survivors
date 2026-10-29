@@ -15,12 +15,20 @@ from rules import Enemy, Game, Gem
 
 instances = []
 seen_events = set()
+menus = []
+record_stores = []
+
+
+class ObservedMenu(app.MenuUI):
+    def __init__(self, *args):
+        super().__init__(*args)
+        menus.append(self)
 
 
 class ObservedGame(Game):
     def __init__(self, config, **kwargs):
         if not kwargs:
-            kwargs["seed"] = 7
+            kwargs['seed'] = 7
         super().__init__(config, **kwargs)
         instances.append(self)
 
@@ -41,10 +49,41 @@ def post(kind, **fields):
 
 async def exercise_input():
     await frames(5)
-    pygame.image.save(pygame.display.get_surface(), Path(tempfile.gettempdir()) / 'night-survivors-home.png')
-    post(pygame.MOUSEBUTTONDOWN, pos=(195, 210), button=1, touch=False)
-    await frames(3)
+    menu = menus[-1]
+    title_game = instances[-1]
+    await frames(10)
+    assert title_game.elapsed == 0 and not title_game.enemies, "Title must not start a game"
+    post(pygame.KEYDOWN, key=pygame.K_p)
+    post(pygame.MOUSEBUTTONDOWN, pos=(10, 10), button=1, touch=False)
+    await frames(2)
+    assert menu.page == "title" and not title_game.paused
+    preview_dir = Path(__file__).resolve().parents[1] / "build" / "previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    pygame.image.save(pygame.display.get_surface(), preview_dir / "title.png")
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.other_button.center, button=1, touch=False)
+    await frames(2)
+    assert menu.page == "skins"
+    for index in range(len(menu.skins)):
+        post(pygame.MOUSEBUTTONDOWN, pos=menu.skin_cards[index].center, button=1, touch=False)
+        await frames(2)
+        assert menu.selected == index
+    pygame.image.save(pygame.display.get_surface(), preview_dir / "skins.png")
+    post(pygame.FINGERDOWN, finger_id=9, touch_id=1, x=menu.skin_cards[1].centerx/390, y=menu.skin_cards[1].centery/700)
+    await frames(2)
+    post(pygame.FINGERUP, finger_id=9, touch_id=1, x=0.5, y=0.5)
+    await frames(2)
+    assert menu.selected == 1 and title_game.elapsed == 0
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.other_button.center, button=1, touch=False)
+    await frames(2)
+    assert menu.page == "title" and menu.selected == 1
+    pygame.image.save(pygame.display.get_surface(), preview_dir / "title-mage.png")
+    post(pygame.FINGERDOWN, finger_id=9, touch_id=1, x=menu.start_button.centerx/390, y=menu.start_button.centery/700)
+    await frames(2)
+    post(pygame.FINGERUP, finger_id=9, touch_id=1, x=0.5, y=0.5)
+    await frames(2)
     game = instances[-1]
+    assert menu.page == "playing" and game is not title_game
+    assert (game.x, game.y) == (0, 0), "Start touch must not leak into movement"
     post(pygame.MOUSEMOTION, pos=(330, 350), rel=(135, 0), buttons=(0, 0, 0), touch=False)
     await frames(30)
     first_x = game.x
@@ -116,11 +155,18 @@ async def exercise_input():
     game.enemies = [Enemy(game.x, game.y, bat_stats["hp"])]
     await frames(2)
     assert game.game_over, "Lethal damage must end play"
-    post(pygame.MOUSEBUTTONDOWN, pos=(195, 505), button=1, touch=False)
+    pygame.image.save(pygame.display.get_surface(), preview_dir / "game-over.png")
+    post(pygame.MOUSEBUTTONDOWN, pos=(10, 10), button=1, touch=False)
+    await frames(2)
+    assert instances[-1] is game, "End screen background must not restart"
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.restart_button.center, button=1, touch=False)
     await frames(2)
     assert instances[-1] is not game and instances[-1].hp == game.config["hero"]["hp"]
     instances[-1].game_over = True
-    post(pygame.FINGERDOWN, finger_id=2, touch_id=1, x=0.5, y=505/700)
+    post(pygame.FINGERDOWN, finger_id=2, touch_id=1, x=0.5, y=menu.title_button.centery/700)
+    await frames(2)
+    assert menu.page == "title" and menu.selected == 1
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.start_button.center, button=1, touch=False)
     await frames(2)
     assert len(instances) == 4 and not instances[-1].game_over
     victory_preview = Path(tempfile.gettempdir()) / "night-survivors-victory.png"
@@ -130,47 +176,72 @@ async def exercise_input():
         await frames(3)
         assert winner.victory and not winner.game_over
         pygame.image.save(pygame.display.get_surface(), victory_preview)
+        pygame.image.save(pygame.display.get_surface(), preview_dir / "victory.png")
         post(pygame.KEYDOWN, key=pygame.K_p)
         await frames(2)
         assert not winner.paused, "P must not pause a finished game"
         if input_kind == "mouse":
-            post(pygame.MOUSEBUTTONDOWN, pos=(195, 505), button=1, touch=False)
+            post(pygame.MOUSEBUTTONDOWN, pos=menu.title_button.center, button=1, touch=False)
+            await frames(2)
+            assert menu.page == "title" and menu.selected == 1
+            post(pygame.MOUSEBUTTONDOWN, pos=menu.start_button.center, button=1, touch=False)
         else:
-            post(pygame.FINGERDOWN, finger_id=7, touch_id=1, x=0.5, y=505/700)
+            post(pygame.FINGERDOWN, finger_id=7, touch_id=1, x=0.5, y=menu.restart_button.centery/700)
         await frames(2)
         fresh = instances[-1]
         assert fresh is not winner and not fresh.finished and not fresh.boss_spawned
         assert fresh.hp == fresh.max_hp and fresh.level == 1
-    # Navigate through the actual daily menu with touch, then retry and return.
+        assert menu.selected == 1
     fresh.victory = True
     await frames(2)
-    post(pygame.FINGERDOWN, finger_id=10, touch_id=1, x=0.5, y=575/700)
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.title_button.center, button=1, touch=False)
     await frames(2)
-    post(pygame.FINGERDOWN, finger_id=11, touch_id=1, x=0.5, y=275/700)
+    post(pygame.FINGERDOWN, finger_id=12, touch_id=1, x=menu.daily_button.centerx/390, y=menu.daily_button.centery/700)
+    await frames(2)
+    assert menu.mode == 'daily' and menu.page == 'title'
+    pygame.image.save(pygame.display.get_surface(), preview_dir / 'daily-title.png')
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.start_button.center, button=1, touch=False)
     await frames(2)
     daily = instances[-1]
-    assert daily is not fresh and daily.card_rng is not daily.rng
-    config = daily.config
+    assert daily.card_rng is not daily.rng and menu.selected == 1
     daily.gain_xp(daily.xp_needed)
     cards = daily.cards[:]
     daily.cards = []
-    daily.victory = True
     daily.elapsed = daily.config['goal']['survive_seconds']
+    daily.victory = True
     await frames(3)
-    pygame.image.save(pygame.display.get_surface(), Path(tempfile.gettempdir()) / 'night-survivors-daily-result.png')
-    post(pygame.MOUSEBUTTONDOWN, pos=(195, 505), button=1, touch=False)
+    pygame.image.save(pygame.display.get_surface(), preview_dir / 'daily-result.png')
+    post(pygame.FINGERDOWN, finger_id=13, touch_id=1, x=0.5, y=menu.restart_button.centery/700)
     await frames(2)
     retry = instances[-1]
-    assert retry is not daily and retry.config == config
+    assert retry is not daily and retry.config == daily.config
     retry.gain_xp(retry.xp_needed)
-    assert retry.cards == cards, 'Daily retry must repeat upgrade seed'
+    assert retry.cards == cards, 'Daily retry must preserve challenge and card seeds'
     retry.cards = []
     retry.game_over = True
     await frames(2)
-    post(pygame.MOUSEBUTTONDOWN, pos=(195, 575), button=1, touch=False)
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.title_button.center, button=1, touch=False)
     await frames(2)
-    pygame.image.save(pygame.display.get_surface(), Path(tempfile.gettempdir()) / 'night-survivors-records.png')
-    print('PASS: home mode selection, daily retry seed, saved daily/normal results and return home')
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.records_button.center, button=1, touch=False)
+    await frames(2)
+    assert menu.page == 'records'
+    pygame.image.save(pygame.display.get_surface(), preview_dir / 'records.png')
+    entries = record_stores[-1].entries
+    assert any(k.startswith('normal:') for k in entries)
+    assert any(k.startswith('daily:') for k in entries)
+    assert any(k.startswith('best:') for k in entries)
+    post(pygame.FINGERDOWN, finger_id=14, touch_id=1, x=0.5, y=menu.back_button.centery/700)
+    await frames(2)
+    assert menu.page == 'title' and menu.selected == 1
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.normal_button.center, button=1, touch=False)
+    await frames(2)
+    post(pygame.MOUSEBUTTONDOWN, pos=menu.start_button.center, button=1, touch=False)
+    await frames(2)
+    assert instances[-1].config['hero']['hp'] == app.load_config()['hero']['hp']
+    assert instances[-1].card_rng is instances[-1].rng
+    print('PASS: daily mode, retry seeds, normal-mode restoration, local records page and skin retention')
+    print("PASS: title stays idle; all 3 skins selectable; mouse/touch start, return to title and restart; skin retained")
+    print(f"Menu previews: {preview_dir}")
     print("PASS: persistent mouse movement, clicks, touch move/release, pause, mouse restart, touch restart")
     print("PASS: level-up freezes play; mouse and touch cards apply upgrades; all weapons and gems render")
     print(f"Card preview: {card_preview}")
@@ -183,9 +254,14 @@ async def exercise_input():
 
 async def check():
     app.Game = ObservedGame
+    app.MenuUI = ObservedMenu
     from records import Records
     temporary = tempfile.TemporaryDirectory()
-    app.Records = lambda: Records(path=Path(temporary.name) / 'records.json')
+    def record_factory():
+        store = Records(path=Path(temporary.name)/'records.json')
+        record_stores.append(store)
+        return store
+    app.Records = record_factory
     task = asyncio.create_task(app.main())
     try:
         await exercise_input()

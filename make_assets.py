@@ -24,7 +24,7 @@ def crystal(source, palette):
 
 
 def main():
-    config = json.loads((ROOT / "data" / "game.json").read_text())
+    config = json.loads((ROOT / "data" / "game.json").read_text(encoding="utf-8"))
     scale = config["art"]["scale"]
     destination = ROOT / "assets"
     destination.mkdir(exist_ok=True)

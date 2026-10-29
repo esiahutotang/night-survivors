@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def main():
-    config = json.loads((ROOT / "data" / "game.json").read_text())["audio"]
+    config = json.loads((ROOT / "data" / "game.json").read_text(encoding="utf-8"))["audio"]
     rate = config["sample_rate"]
     destination = ROOT / "sounds"
     destination.mkdir(exist_ok=True)

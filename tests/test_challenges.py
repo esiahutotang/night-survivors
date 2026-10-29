@@ -49,6 +49,8 @@ class DailyTests(unittest.TestCase):
         version = version_id(self.config, self.definitions)
         self.config['feel']['shake_pixels'] += 1
         self.assertEqual(version, version_id(self.config, self.definitions))
+        self.config['skins'] = [{'name': 'cosmetic', 'sprite': 'hero'}]
+        self.assertEqual(version, version_id(self.config, self.definitions))
         self.config['hero']['hp'] += 1
         self.assertNotEqual(version, version_id(self.config, self.definitions))
 

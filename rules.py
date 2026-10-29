@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 def load_config():
-    return json.loads((Path(__file__).parent / "data" / "game.json").read_text())
+    return json.loads((Path(__file__).parent / "data" / "game.json").read_text(encoding="utf-8"))
 
 
 @dataclass(eq=False)

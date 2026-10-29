@@ -6,6 +6,7 @@ from pathlib import Path
 import pygame
 from rules import Game, load_config
 from upgrade_ui import UpgradeUI
+from menu_ui import MenuUI
 from challenges import challenge_day, daily_challenge, load_challenges, version_id, result_for, summary
 from records import Records
 
@@ -122,6 +123,9 @@ async def main():
     # Finished files only: Pillow and the asset builder stay outside the game.
     sprites = {path.stem: pygame.image.load(str(path)).convert_alpha()
                for path in sorted(asset_dir.glob("*.png"))}
+    for skin in config["skins"]:
+        name = skin["sprite"]
+        sprites[name] = pygame.transform.scale(sprites[name], sprites["hero"].get_size())
     demon = sprites["demon"]
     scale = config["enemies"]["demon"]["draw_scale"]
     sprites["demon"] = pygame.transform.scale(demon, (round(demon.get_width()*scale), round(demon.get_height()*scale)))
@@ -142,11 +146,8 @@ async def main():
     records = Records()
     today = daily_challenge(base_config, definitions)
     mode = 'normal'
-    run_day = today['day']
-    run_preset = 'normal'
-    home = True
-    recorded = False
-    new_best = False
+    run_day, run_preset = today['day'], 'normal'
+    recorded = new_best = False
     game = Game(config)
     center = (width // 2, height // 2)
     pointer = None
@@ -156,6 +157,7 @@ async def main():
     card_rects = [pygame.Rect(20, 180 + i*132, width-40, 112)
                   for i in range(config["growth"]["cards"])]
     upgrade_ui = UpgradeUI(font_path)
+    menu = MenuUI(config, sprites, font_path)
 
     def choose_at(position):
         nonlocal pointer, finger, accumulator
@@ -172,47 +174,36 @@ async def main():
         rect = surface.get_rect(center=position) if centered else surface.get_rect(topleft=position)
         screen.blit(surface, rect)
 
-    normal_button = pygame.Rect(30, 180, width-60, 58)
-    daily_button = pygame.Rect(30, 250, width-60, 58)
-    retry_button = pygame.Rect(30, 480, width-60, 54)
-    home_button = pygame.Rect(30, 548, width-60, 54)
-
-    def restart(selected=None):
-        nonlocal game, config, accumulator, pointer, finger, home, mode
-        nonlocal run_day, run_preset, recorded, new_best, today
-        mode = selected or mode
+    def restart():
+        nonlocal game, config, accumulator, pointer, finger, today, mode, run_day, run_preset, recorded, new_best
+        mode = menu.mode
         today = daily_challenge(base_config, definitions)
         run_day = today['day']
         run_preset = today['preset']['id'] if mode == 'daily' else 'normal'
         config = today['config'] if mode == 'daily' else base_config
         game = (Game(config, seed=today['seed'], card_seed=today['card_seed'])
                 if mode == 'daily' else Game(config))
+        recorded = new_best = False
+        menu.page = "playing"
         feedback.reset()
         accumulator = 0.0
-        pointer = finger = None
-        home = recorded = new_best = False
+        pointer = None
+        finger = None
 
-    def click_at(position):
-        nonlocal home, pointer, finger, accumulator
-        if home:
-            if normal_button.collidepoint(position):
-                restart('normal')
-            elif daily_button.collidepoint(position):
-                restart('daily')
-        elif game.finished:
-            if retry_button.collidepoint(position):
-                restart()
-            elif home_button.collidepoint(position):
-                home = True
-                pointer = finger = None
-                accumulator = 0.0
-        elif game.cards:
-            choose_at(position)
-
-    def button(rect, label):
-        pygame.draw.rect(screen, (28, 55, 72), rect, border_radius=10)
-        pygame.draw.rect(screen, (96, 196, 183), rect, 2, border_radius=10)
-        text(label, rect.center, centered=True)
+    def menu_click(position):
+        nonlocal pointer, finger, accumulator
+        if menu.page == "playing" and not game.finished:
+            return False
+        action = menu.click(position, game.finished)
+        if action == "start":
+            restart()
+        elif action == "title":
+            menu.page = "title"
+            feedback.reset()
+        pointer = None
+        finger = None
+        accumulator = 0.0
+        return True
 
     while running:
         frame_time = min(clock.tick(0 if sys.platform == "emscripten" else config["screen"]["fps"]) / 1000,
@@ -220,21 +211,28 @@ async def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                  and not getattr(event, "touch", False) and menu_click(event.pos)):
+                continue
+            elif event.type == pygame.FINGERDOWN and menu_click((event.x * width, event.y * height)):
+                continue
+            elif menu.page != "playing":
+                continue
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
-                if not home and not game.finished and not game.cards:
+                if not game.finished and not game.cards:
                     game.paused = not game.paused
                     accumulator = 0.0
             elif event.type == pygame.MOUSEMOTION and not getattr(event, "touch", False):
-                if finger is None and not home and not game.finished:
+                if finger is None:
                     pointer = event.pos
             elif event.type == pygame.MOUSEBUTTONDOWN and not getattr(event, "touch", False):
-                if event.button == 1 and (home or game.cards or game.finished):
-                    click_at(event.pos)
+                if event.button == 1 and game.cards:
+                    choose_at(event.pos)
                 elif finger is None:
                     pointer = event.pos
             elif event.type == pygame.FINGERDOWN:
-                if home or game.cards or game.finished:
-                    click_at((event.x * width, event.y * height))
+                if game.cards:
+                    choose_at((event.x * width, event.y * height))
                 elif finger is None:
                     finger = event.finger_id
                     pointer = (event.x * width, event.y * height)
@@ -247,7 +245,18 @@ async def main():
                 pointer = None
                 finger = None
 
-        if not home and not game.paused and not game.finished and not game.cards:
+        if game.finished and not recorded:
+            new_best = records.submit(result_for(game, mode, version, run_day, run_preset))
+            recorded = True
+        if menu.page != "playing":
+            if challenge_day() != today['day']:
+                today = daily_challenge(base_config, definitions)
+            menu.draw(screen, today, records, version)
+            pygame.display.flip()
+            await asyncio.sleep(0)
+            continue
+
+        if not game.paused and not game.finished and not game.cards:
             accumulator += frame_time
             dt = config["simulation"]["step"]
             while accumulator + 1e-9 >= dt:
@@ -259,33 +268,6 @@ async def main():
                     break
         else:
             accumulator = 0.0
-
-        if game.finished and not recorded:
-            new_best = records.submit(result_for(game, mode, version, run_day, run_preset))
-            recorded = True
-        if home:
-            if challenge_day() != today['day']:
-                today = daily_challenge(base_config, definitions)
-            screen.fill((9, 15, 27))
-            text('暗夜幸存者', (width//2, 65), (122, 232, 213), title, True)
-            text('两分钟一局，今天再进一步', (width//2, 116), face=small, centered=True)
-            button(normal_button, '普通模式')
-            button(daily_button, '每日挑战')
-            text(today['day'] + ' · 北京时间零点更新', (width//2, 335), face=small, centered=True)
-            text(today['preset']['name'], (width//2, 369), (255, 216, 140), centered=True)
-            text(today['preset']['description'], (width//2, 400), face=small, centered=True)
-            text('本机纪录', (30, 448), (122, 232, 213))
-            normal = records.best('normal', version)
-            daily = records.best('daily', version, today['day'], today['preset']['id'])
-            history = records.best('daily', version, today['day'], today['preset']['id'], history=True)
-            for label, best, y in (('普通最佳', normal, 483), ('今日最佳', daily, 533), ('同类挑战历史最佳', history, 583)):
-                text(label + ((' · ' + best['day']) if best and label.startswith('同类') else ''), (30, y), face=small)
-                text(summary(best), (30, y+23), (177, 195, 218), small)
-            text('保存在当前设备 / 浏览器' if records.persistent else '存储不可用 · 纪录仅本次有效',
-                 (width//2, 665), (177, 195, 218), small, True)
-            pygame.display.flip()
-            await asyncio.sleep(0)
-            continue
 
         feedback.update(0 if game.paused or game.cards else frame_time)
         feedback.consume(game.drain_events())
@@ -313,14 +295,15 @@ async def main():
             screen.blit(sprite, sprite.get_rect(center=pos))
         for spark in game.sparks:
             pygame.draw.circle(screen, (255, 224, 105), (round(spark.x+origin_x), round(spark.y+origin_y)), config["weapons"]["spark"]["radius"])
-        screen.blit(sprites["hero"], sprites["hero"].get_rect(center=draw_center))
+        hero_sprite = sprites[menu.sprite_name]
+        screen.blit(hero_sprite, hero_sprite.get_rect(center=draw_center))
         for x, y in game.blade_positions():
             sprite = sprites["sword"]
             screen.blit(sprite, sprite.get_rect(center=(round(x+origin_x), round(y+origin_y))))
         feedback.draw(screen, (origin_x, origin_y), font)
 
         pygame.draw.rect(screen, (12, 18, 30), (0, 0, width, 102))
-        text("每日挑战" if mode == "daily" else "暗夜幸存者", (16, 12), (122, 232, 213))
+        text("每日挑战" if mode == 'daily' else "暗夜幸存者", (16, 12), (122, 232, 213))
         seconds = int(game.elapsed + 1e-9)
         goal = config["goal"]["survive_seconds"]
         text(f"{seconds//60}:{seconds%60:02d} / {goal//60}:{goal%60:02d}", (width-116, 14), face=small)
@@ -345,23 +328,21 @@ async def main():
                 upgrade_ui.draw_cards(screen, game, card_rects)
                 text("点击卡片，继续战斗", (width//2, 610), centered=True)
             elif game.finished:
-                text("生存胜利" if game.victory else "游戏结束", (width//2, 168),
+                text("生存胜利" if game.victory else "游戏结束", (width//2, 180),
                      (122, 232, 213) if game.victory else (255, 138, 155), title, True)
                 text(('每日挑战 · ' + run_day) if mode == 'daily' else '普通模式',
-                     (width//2, 222), face=small, centered=True)
+                     (width//2, 230), face=small, centered=True)
                 if mode == 'daily':
-                    text(today['preset']['name'], (width//2, 250), face=small, centered=True)
-                current = result_for(game, mode, version, run_day, run_preset)
-                text(summary(current), (width//2, 290), face=small, centered=True)
-                text('刷新本机最佳！' if new_best else '本机最佳纪录', (width//2, 340),
+                    text(today['preset']['name'], (width//2, 258), face=small, centered=True)
+                text(summary(result_for(game, mode, version, run_day, run_preset)),
+                     (width//2, 295), face=small, centered=True)
+                text('刷新本机最佳！' if new_best else '本机最佳纪录', (width//2, 338),
                      (255, 216, 140), centered=True)
-                best = records.best(mode, version, run_day, run_preset)
-                text(summary(best), (width//2, 377), face=small, centered=True)
-                text('通关优先，其次生存时间、击败数、等级', (width//2, 425), face=small, centered=True)
-                button(retry_button, '再玩一次' if mode == 'normal' else '再挑战一次')
-                button(home_button, '返回首页')
+                text(summary(records.best(mode, version, run_day, run_preset)),
+                     (width//2, 375), face=small, centered=True)
+                menu.draw_end_buttons(screen)
                 text('已保存到本机' if records.persistent else '存储不可用 · 纪录仅本次有效',
-                     (width//2, 640), face=small, centered=True)
+                     (width//2, 570), face=small, centered=True)
             else:
                 text("已暂停", (width//2, height//2-55), (122, 232, 213), title, True)
                 text("按 P 继续游戏", (width//2, height//2), centered=True)
