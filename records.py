@@ -15,6 +15,8 @@ def valid_result(value):
             return False
     if value['mode'] not in ('normal', 'daily') or type(value.get('victory')) is not bool:
         return False
+    if value.get('character') not in (None, 'knight', 'mage', 'ranger'):
+        return False
     for key in ('elapsed_ms', 'kills', 'level'):
         if type(value.get(key)) is not int or not 0 <= value[key] <= 10000000:
             return False

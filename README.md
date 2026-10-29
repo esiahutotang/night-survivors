@@ -1,11 +1,18 @@
 # Night Survivors — Step 5: Sound and feel
 
 完整融合版：进入游戏会先显示标题界面。选择普通模式或每日挑战，点击开始才计时。
-“皮肤选择”可切换钢甲骑士、赤焰法师、翠影游侠，三款能力相同。
+“角色选择”可切换铁甲骑士、赤焰法师、翠影游侠，并显示开局优势。
+普通模式：铁甲骑士自带 1 级生命强化（120/120 血）；赤焰法师的
+1 级魔杖伤害增加一档（20→23，攻击间隔仍为 0.8 秒）；翠影游侠
+自带 1 级疾风靴（移速 120→132）。已有加成会与后续升级正常叠加。
+每日挑战先应用当天基础规则，再叠加角色优势。最佳记录按角色和规则版本分开；
+原有记录保留，不混入新规则的排名。
+怪物现在掉落像素金币：单枚提供 1 经验，金币叠提供 2 经验，仍可吸取和升级。
 游戏结束或胜利后，可选择“重新开始”或“回到标题”；皮肤在本次运行期间保留。
 标题页的“本机历史记录”可查看普通最佳、今日挑战最佳和同类挑战历史最佳。
 每日挑战按北京时间零点轮换；重试采用当天规则，选择普通模式可恢复基础数值。
-皮肤更名或新增不会改变每日挑战种子和记录版本。配置按 UTF-8 读取，避免 Windows 乱码。
+角色外观更名不会改变每日挑战种子，角色加成改动会生成新的规则版本。
+配置按 UTF-8 读取，避免 Windows 乱码。
 新增角色图片由 ImageGen 生成，保存在 assets/hero_mage.png 和
 assets/hero_ranger.png。原始 raw_art/ 保持不变。
 
@@ -25,7 +32,7 @@ Install `pygame-ce` with `py -3.13 -m pip install pygame-ce`, then run
 Move the mouse away from the hero to walk; the hero keeps walking toward the
 pointer even if the mouse stays still. On a touchscreen, hold and drag to walk;
 lift your finger to stop. The Spark Wand automatically fires at nearby enemies.
-Collect blue (XP 1) and pink (XP 2) gems to gain XP. Nearby gems fly toward you.
+Collect single gold coins (XP 1) and coin stacks (XP 2) to gain XP. Nearby coins fly toward you.
 At each level, play freezes: click or tap one of three cards to choose an upgrade.
 Add Spin Blades or Holy Ring, improve your weapons, or gain speed, HP or magnet
 range. Weapons and passive items each reach level 5. The HP and XP bars are at

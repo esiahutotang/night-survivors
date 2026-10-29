@@ -49,7 +49,7 @@ def card_details(game, name):
         elif name == "magnet":
             rows = [change("拾取范围", game.magnet_radius,
                            game.magnet_radius + cfg["magnet_radius"], " 像素"),
-                    "更远处的经验宝石自动飞向你"]
+                    "更远处的经验金币自动飞向你"]
         else:
             maximum = game.max_hp + cfg["heart_hp"]
             healed = min(maximum, game.hp + cfg["heart_heal"])

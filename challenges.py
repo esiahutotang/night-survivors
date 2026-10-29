@@ -49,6 +49,7 @@ def daily_challenge(base, definitions, day=None):
 
 def result_for(game, mode, version, day, preset='normal'):
     return {'mode': mode, 'version': version, 'day': day, 'preset': preset,
+            'character': game.character,
             'victory': bool(game.victory), 'elapsed_ms': round(game.elapsed * 1000),
             'kills': game.kills, 'level': game.level,
             'weapons': dict(game.weapons), 'passives': dict(game.passives)}

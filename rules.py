@@ -41,8 +41,10 @@ class Gem:
 
 
 class Game:
-    def __init__(self, config=None, seed=None, card_seed=None):
+    def __init__(self, config=None, seed=None, card_seed=None, character=None):
         self.config = config if config is not None else load_config()
+        self.character = character
+        self.starting_bonus = self.config.get("characters", {}).get(character, {})
         self.rng = random.Random(seed)
         self.card_rng = self.rng if card_seed is None else random.Random(card_seed)
         self.x = self.y = self.elapsed = 0.0
@@ -62,6 +64,8 @@ class Game:
         self.xp = 0
         self.weapons = {"spark": 1}
         self.passives = {"boots": 0, "heart": 0, "magnet": 0}
+        self.passives.update(self.starting_bonus.get("passives", {}))
+        self.hp = self.max_hp
         self.cards = []
         self.events = []
 
@@ -133,6 +137,7 @@ class Game:
         extra = (self.weapons.get(name, 1) if level is None else level) - 1
         stats["damage"] += extra * stats["damage_per_level"]
         if name == "spark":
+            stats["damage"] += self.starting_bonus.get("spark_damage_levels", 0) * stats["damage_per_level"]
             stats["interval"] -= extra * stats["interval_per_level"]
             stats["count"] += sum(level <= extra+1 for level in stats["extra_spark_levels"])
         elif name == "blades":

@@ -1,6 +1,7 @@
-"""Title, skin selection and end-screen controls. Appearance never changes rules."""
+"""Title, character selection and end-screen controls."""
 import pygame
 from challenges import summary
+from rules import Game
 
 
 class MenuUI:
@@ -8,6 +9,9 @@ class MenuUI:
         self.width = config["screen"]["width"]
         self.height = config["screen"]["height"]
         self.skins = config["skins"]
+        self.config = config
+        self._stats_key = None
+        self._stats = []
         self.selected = 0
         self.page = "title"
         self.mode = "normal"
@@ -20,7 +24,7 @@ class MenuUI:
         self.other_button = pygame.Rect(45, 526, self.width-90, 54)
         self.restart_button = pygame.Rect(45, 408, self.width-90, 54)
         self.title_button = pygame.Rect(45, 478, self.width-90, 54)
-        self.skin_cards = [pygame.Rect(30+i*112, 236, 106, 164) for i in range(len(self.skins))]
+        self.skin_cards = [pygame.Rect(30+i*112, 236, 106, 180) for i in range(len(self.skins))]
         self.normal_button = pygame.Rect(30, 174, 160, 38)
         self.daily_button = pygame.Rect(200, 174, 160, 38)
         self.records_button = pygame.Rect(45, 592, self.width-90, 42)
@@ -29,6 +33,24 @@ class MenuUI:
     @property
     def sprite_name(self):
         return self.skins[self.selected]["sprite"]
+
+    @property
+    def character(self):
+        return self.skins[self.selected]["character"]
+
+    def perk_label(self, index, today, short=False):
+        key = (self.mode, today['day'])
+        if self._stats_key != key:
+            config = today['config'] if self.mode == 'daily' else self.config
+            self._stats = [Game(config, seed=0, character=s['character']) for s in self.skins]
+            self._stats_key = key
+        game = self._stats[index]
+        if game.character == 'knight':
+            return f"生命 {game.hp:g}" if short else f"生命强化 1 级 · 开局 {game.hp:g} 血"
+        if game.character == 'mage':
+            damage = game.weapon_stats('spark')['damage']
+            return f"伤害 {damage:g}" if short else f"伤害强化 1 级 · 开局伤害 {damage:g}"
+        return f"移速 {game.speed:g}" if short else f"移速强化 1 级 · 开局移速 {game.speed:g}"
 
     def click(self, position, finished=False):
         if self.page != "playing":
@@ -81,7 +103,7 @@ class MenuUI:
             self.draw_records(screen, today, records, version)
             return
         if self.page == "skins":
-            self.label(screen, "皮肤选择", (self.width//2, 204))
+            self.label(screen, "角色选择", (self.width//2, 204))
             for index, rect in enumerate(self.skin_cards):
                 chosen = index == self.selected
                 pygame.draw.rect(screen, (27, 54, 63) if chosen else (21, 32, 49), rect, border_radius=10)
@@ -89,7 +111,8 @@ class MenuUI:
                 sprite = self.thumbs[index]
                 screen.blit(sprite, sprite.get_rect(center=(rect.centerx, rect.y+61)))
                 self.label(screen, self.skins[index]["name"], (rect.centerx, rect.y+115), font=self.small)
-                self.label(screen, "已选择" if chosen else "点击选择", (rect.centerx, rect.y+143),
+                self.label(screen, self.perk_label(index, today, True), (rect.centerx, rect.y+138), font=self.small)
+                self.label(screen, "已选择" if chosen else "点击选择", (rect.centerx, rect.y+163),
                            (122, 232, 213) if chosen else (138, 157, 180), self.small)
         else:
             pygame.draw.circle(screen, (21, 42, 53), (self.width//2, 286), 70)
@@ -103,14 +126,15 @@ class MenuUI:
             self.label(screen, today['preset']['name'] + ' · ' + today['day'], (self.width//2, 412), (255, 216, 140), self.small)
             self.label(screen, today['preset']['description'], (self.width//2, 438), font=self.small)
         else:
-            self.label(screen, "皮肤仅改变外观，能力完全相同", (self.width//2, 430), (150, 170, 191), self.small)
+            self.label(screen, self.perk_label(self.selected, today), (self.width//2, 430), (150, 170, 191), self.small)
         self.button(screen, self.start_button, "开始每日挑战" if self.mode == "daily" else "开始游戏", True)
-        self.button(screen, self.other_button, "返回标题" if self.page == "skins" else "皮肤选择")
+        self.button(screen, self.other_button, "返回标题" if self.page == "skins" else "角色选择")
         if self.page == "title":
             self.button(screen, self.records_button, "本机历史记录")
         self.label(screen, "按住屏幕行走 · 自动攻击 · P 暂停", (self.width//2, 663), (138, 157, 180), self.small)
 
     def draw_records(self, screen, today, records, version):
+        self.label(screen, self.skins[self.selected]['name'] + ' · 本机最佳', (self.width//2, 174), font=self.small)
         day, preset = today['day'], today['preset']['id']
         entries = [('普通模式最佳', records.best('normal', version)),
                    ('今日挑战最佳', records.best('daily', version, day, preset)),

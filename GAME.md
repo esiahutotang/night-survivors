@@ -1,5 +1,15 @@
 # Night Survivors — design (CDT501 Lecture 9)
 
+## Latest requested changes: coins and starting characters
+- Enemy crystal drops are now gold coins; XP values and pickup rules stay the same.
+- Iron Knight starts with Big Heart level 1: 120 max/current HP in Normal mode.
+- Fire Mage starts with one Spark Wand damage increment: 23 damage at weapon level 1;
+  its 0.8-second attack interval stays unchanged. Later damage upgrades stack normally.
+- Emerald Ranger starts with Swift Boots level 1: 132 px/s in Normal mode.
+- Daily modifiers apply to base rules first, then character bonuses are added.
+- Starting bonuses are in data/game.json under characters, and records are separate
+  for each character and rules version. The earlier crystal design below is superseded.
+
 A tiny game in the "survivors" style: you only walk, your weapons attack by themselves,
 enemies come from every side, you grow stronger every level. Names, numbers and pictures are our own.
 

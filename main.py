@@ -143,6 +143,7 @@ async def main():
     base_config = config
     definitions = load_challenges()
     version = version_id(base_config, definitions)
+    run_version = version
     records = Records()
     today = daily_challenge(base_config, definitions)
     mode = 'normal'
@@ -175,14 +176,15 @@ async def main():
         screen.blit(surface, rect)
 
     def restart():
-        nonlocal game, config, accumulator, pointer, finger, today, mode, run_day, run_preset, recorded, new_best
+        nonlocal game, config, accumulator, pointer, finger, today, mode, run_day, run_preset, recorded, new_best, run_version
         mode = menu.mode
         today = daily_challenge(base_config, definitions)
         run_day = today['day']
         run_preset = today['preset']['id'] if mode == 'daily' else 'normal'
         config = today['config'] if mode == 'daily' else base_config
-        game = (Game(config, seed=today['seed'], card_seed=today['card_seed'])
-                if mode == 'daily' else Game(config))
+        game = (Game(config, seed=today['seed'], card_seed=today['card_seed'], character=menu.character)
+                if mode == 'daily' else Game(config, character=menu.character))
+        run_version = version + ':' + menu.character
         recorded = new_best = False
         menu.page = "playing"
         feedback.reset()
@@ -246,12 +248,12 @@ async def main():
                 finger = None
 
         if game.finished and not recorded:
-            new_best = records.submit(result_for(game, mode, version, run_day, run_preset))
+            new_best = records.submit(result_for(game, mode, run_version, run_day, run_preset))
             recorded = True
         if menu.page != "playing":
             if challenge_day() != today['day']:
                 today = daily_challenge(base_config, definitions)
-            menu.draw(screen, today, records, version)
+            menu.draw(screen, today, records, version + ':' + menu.character)
             pygame.display.flip()
             await asyncio.sleep(0)
             continue
@@ -287,7 +289,7 @@ async def main():
             pygame.draw.circle(aura, (255, 236, 136, 180), (radius+1, radius+1), radius, 2)
             screen.blit(aura, (draw_center[0]-radius-1, draw_center[1]-radius-1))
         for gem in game.gems:
-            sprite = sprites["gem_blue" if gem.xp == 1 else "gem_pink"]
+            sprite = sprites["coin" if gem.xp == 1 else "coin_stack"]
             screen.blit(sprite, sprite.get_rect(center=(round(gem.x+origin_x), round(gem.y+origin_y))))
         for bat in game.enemies:
             pos = (round(bat.x + origin_x), round(bat.y + origin_y))
@@ -334,11 +336,11 @@ async def main():
                      (width//2, 230), face=small, centered=True)
                 if mode == 'daily':
                     text(today['preset']['name'], (width//2, 258), face=small, centered=True)
-                text(summary(result_for(game, mode, version, run_day, run_preset)),
+                text(summary(result_for(game, mode, run_version, run_day, run_preset)),
                      (width//2, 295), face=small, centered=True)
                 text('刷新本机最佳！' if new_best else '本机最佳纪录', (width//2, 338),
                      (255, 216, 140), centered=True)
-                text(summary(records.best(mode, version, run_day, run_preset)),
+                text(summary(records.best(mode, run_version, run_day, run_preset)),
                      (width//2, 375), face=small, centered=True)
                 menu.draw_end_buttons(screen)
                 text('已保存到本机' if records.persistent else '存储不可用 · 纪录仅本次有效',

@@ -5,9 +5,27 @@ Only this offline script uses Pillow. The game loads the resulting assets/ files
 import json
 from pathlib import Path
 import shutil
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent
+
+
+def gold_coins(stacked=False):
+    """Original 16px coin icons, using the same crisp scaling as the sprites."""
+    image = Image.new("RGBA", (16, 16))
+    draw = ImageDraw.Draw(image)
+    def coin(dx, dy):
+        points = [(5, 2), (9, 2), (12, 5), (12, 9), (9, 12), (5, 12), (2, 9), (2, 5)]
+        draw.polygon([(x+dx, y+dy) for x, y in points], fill=(255, 207, 64), outline=(113, 60, 26))
+        draw.ellipse((4+dx, 4+dy, 10+dx, 10+dy), fill=(219, 136, 35))
+        draw.line((6+dx, 5+dy, 6+dx, 9+dy), fill=(255, 238, 139), width=2)
+        draw.point((4+dx, 4+dy), fill=(255, 255, 205))
+    if stacked:
+        coin(2, -1)
+        coin(-1, 2)
+    else:
+        coin(0, 0)
+    return image
 
 
 def crystal(source, palette):
@@ -37,6 +55,8 @@ def main():
     for path in sorted((ROOT / "raw_art").glob("*.png")):
         with Image.open(path) as image:
             save(image.convert("RGBA"), path.name)
+    save(gold_coins(), "coin.png")
+    save(gold_coins(stacked=True), "coin_stack.png")
     with Image.open(ROOT / "raw_art" / "gem.png") as image:
         save(crystal(image, [(14, 73, 153), (20, 137, 238), (45, 199, 255),
                              (145, 237, 255), (234, 255, 255)]), "gem_blue.png")
