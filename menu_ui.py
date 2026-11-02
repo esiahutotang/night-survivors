@@ -123,8 +123,12 @@ class MenuUI:
             self.button(screen, self.normal_button, "普通模式", self.mode == "normal")
             self.button(screen, self.daily_button, "每日挑战", self.mode == "daily")
         if self.page == "title" and self.mode == "daily":
-            self.label(screen, today['preset']['name'] + ' · ' + today['day'], (self.width//2, 412), (255, 216, 140), self.small)
-            self.label(screen, today['preset']['description'], (self.width//2, 438), font=self.small)
+            names = ' · '.join(mod['name'] for mod in today['modifiers'])
+            self.label(screen, names, (self.width//2, 412), (255, 216, 140), self.small)
+            prefixes = {'curse': '咒', 'boon': '福', 'neutral': '中'}
+            shorts = ' · '.join(f"{prefixes.get(mod['kind'], '·')}{mod['short']}"
+                                for mod in today['modifiers'])
+            self.label(screen, shorts, (self.width//2, 438), (150, 170, 191), self.small)
         else:
             self.label(screen, self.perk_label(self.selected, today), (self.width//2, 430), (150, 170, 191), self.small)
         self.button(screen, self.start_button, "开始每日挑战" if self.mode == "daily" else "开始游戏", True)

@@ -76,6 +76,10 @@ class Feedback:
                 self.flashes = self.flashes[-self.config["max_flashes"]:]
             elif name == "hurt":
                 self.shake_left = self.config["shake_duration"]
+            elif name == "mercy":
+                # Instakill warning: the hero was grazed and has one window to escape.
+                self.shake_left = self.config["shake_duration"]
+                self.play("hurt")
             if name != "death":
                 self.play(name)
 
@@ -261,9 +265,15 @@ async def main():
         if not game.paused and not game.finished and not game.cards:
             accumulator += frame_time
             dt = config["simulation"]["step"]
+            # Lightning night: run several fixed steps per tick so the whole game
+            # (clock included) speeds up while physics and seeds stay exact.
+            tick_steps = max(1, config.get("modifiers", {}).get("time_scale", 1))
             while accumulator + 1e-9 >= dt:
                 direction = None if pointer is None else (pointer[0]-center[0], pointer[1]-center[1])
-                game.update(direction)
+                for _ in range(tick_steps):
+                    game.update(direction)
+                    if game.cards or game.finished:
+                        break
                 accumulator -= dt
                 if game.cards or game.finished:
                     accumulator = 0.0

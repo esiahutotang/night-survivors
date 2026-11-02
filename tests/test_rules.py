@@ -1,3 +1,4 @@
+import copy
 import math
 import unittest
 from rules import Enemy, Game, load_config
@@ -87,6 +88,129 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(fresh.hp, self.cfg["hero"]["hp"])
         self.assertFalse(fresh.game_over)
         self.assertEqual(fresh.kills, 0)
+
+
+class ModifierTests(unittest.TestCase):
+    """Behaviour of the four special daily words on the rules layer."""
+
+    def setUp(self):
+        self.base = load_config()
+
+    def make_game(self, behaviour):
+        cfg = copy.deepcopy(self.base)
+        if behaviour:
+            cfg["modifiers"] = dict(behaviour)
+        game = Game(cfg, seed=1)
+        game.attack_clock = float("inf")  # keep automatic attacks out of the way
+        return game
+
+    def touch_with_bat(self, game, hp=None):
+        bat_hp = hp if hp is not None else self.base["enemies"]["bat"]["hp"]
+        bat = Enemy(0, 0, bat_hp, kind="bat", max_hp=bat_hp)
+        game.enemies = [bat]
+        game.update(None)
+        return bat
+
+    def test_basics_scales_damage_linearly_and_doubles_hp(self):
+        cfg = copy.deepcopy(self.base)
+        cfg["hero"]["hp"] *= 2  # the HP doubling is applied by challenges.py
+        cfg["modifiers"] = {"no_cards": True, "basics_damage_scale": 3,
+                            "basics_damage_scale_per_level": 0.05}
+        game = Game(cfg, seed=1)
+        base_damage = self.base["weapons"]["spark"]["damage"]
+        self.assertEqual(game.max_hp, self.base["hero"]["hp"] * 2)
+        self.assertAlmostEqual(game.weapon_stats("spark")["damage"], base_damage * 3)
+        game.level = 2
+        self.assertAlmostEqual(game.weapon_stats("spark")["damage"], base_damage * 3.05)
+        game.level = 6
+        self.assertAlmostEqual(game.weapon_stats("spark")["damage"], base_damage * 3.25)
+
+    def test_basics_day_offers_no_cards_and_stacks_levels(self):
+        game = self.make_game({"no_cards": True, "basics_damage_scale": 3,
+                               "basics_damage_scale_per_level": 0.05})
+        for expected_level in (2, 3):
+            game.gain_xp(game.xp_needed)
+            self.assertEqual(game.cards, [])
+            self.assertEqual(game.level, expected_level)
+            self.assertEqual(game.xp, 0)
+
+    def test_instakill_locks_hp_and_kills_every_hit(self):
+        game = self.make_game({"instakill": True, "mercy_invincible_seconds": 1.5})
+        self.assertEqual(game.max_hp, 1)
+        self.assertEqual(game.hp, 1)
+        bat = self.touch_with_bat(game, hp=999)
+        game.hurt_enemy(bat, 1)  # any hit, even 1 damage, must kill a 999 HP enemy
+        self.assertEqual(game.kills, 1)
+        self.assertEqual(game.enemies, [])
+
+    def test_instakill_mercy_window_forgives_once_then_kills(self):
+        game = self.make_game({"instakill": True, "mercy_invincible_seconds": 1.5})
+        self.touch_with_bat(game)
+        self.assertFalse(game.game_over)
+        self.assertEqual(game.hp, 1)
+        self.assertGreater(game.invincible, 0)          # mercy window open
+        self.touch_with_bat(game)                        # immune inside the window
+        self.assertFalse(game.game_over)
+        self.advance_seconds(game, 1.5)                  # window expires
+        self.assertLessEqual(game.invincible, 1e-9)
+        self.touch_with_bat(game)                        # next hit is lethal
+        self.assertTrue(game.game_over)
+        self.assertEqual(game.hp, 0)
+
+    def test_instakill_without_mercy_is_pure_mutual_kill(self):
+        game = self.make_game({"instakill": True, "mercy_invincible_seconds": 0})
+        self.touch_with_bat(game)
+        self.assertTrue(game.game_over)
+        self.assertEqual(game.hp, 0)
+
+    def advance_seconds(self, game, seconds):
+        for _ in range(round(seconds / self.base["simulation"]["step"])):
+            game.update(None)
+
+    def test_feast_heals_the_hero_per_damage_dealt(self):
+        game = self.make_game({"lifesteal": 0.05})
+        game.hp = 1
+        bat = Enemy(50, 0, 100, kind="bat", max_hp=100)
+        game.enemies = [bat]
+        game.hurt_enemy(bat, 20)                        # 20 damage cannot kill a 100 HP bat
+        self.assertAlmostEqual(game.hp, 1 + 20 * 0.05)
+        game.hp = game.max_hp
+        game.hurt_enemy(bat, 20)  # healing is capped at max HP
+        self.assertEqual(game.hp, game.max_hp)
+
+    def test_feast_heals_enemies_per_damage_dealt(self):
+        game = self.make_game({"lifesteal": 0.05})
+        game.enemies = [Enemy(0, 0, 90, kind="bat", max_hp=100)]  # wounded bat bites back
+        game.update(None)
+        damage = self.base["enemies"]["bat"]["damage"]
+        self.assertAlmostEqual(game.enemies[0].hp, 90 + damage * 0.05)
+
+    def test_feast_never_heals_an_enemy_above_its_spawn_hp(self):
+        game = self.make_game({"lifesteal": 0.05})
+        bat_hp = self.base["enemies"]["bat"]["hp"]
+        bat = Enemy(0, 0, bat_hp, kind="bat", max_hp=bat_hp)
+        bat.hp = bat_hp - 0.01                       # one sliver below full
+        game.enemies = [bat]
+        game.hp = 50
+        game.update(None)
+        self.assertLessEqual(bat.hp, bat_hp)
+
+    def test_reserved_shield_absorbs_one_lethal_hit(self):
+        game = self.make_game({"instakill": True, "mercy_invincible_seconds": 0})
+        game.shield = 1
+        self.touch_with_bat(game)
+        self.assertFalse(game.game_over)
+        self.assertEqual(game.shield, 0)
+        self.touch_with_bat(game)                     # shield spent, mercy disabled
+        self.assertTrue(game.game_over)
+
+    def test_normal_runs_have_no_modifier_behaviour(self):
+        game = self.make_game(None)
+        self.touch_with_bat(game)
+        expected = self.base["hero"]["hp"] - self.base["enemies"]["bat"]["damage"]
+        self.assertEqual(game.hp, expected)
+        self.assertEqual(game.invincible, 0)
+        self.assertFalse(game.mercy_spent)
 
 
 if __name__ == "__main__":

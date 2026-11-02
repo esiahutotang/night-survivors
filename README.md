@@ -106,25 +106,46 @@ game, its random state, or its balance. The full card remains a mouse/touch targ
 ## Daily challenges and personal bests
 
 The home screen offers Normal and Daily Challenge. Daily rules change at midnight
-in Beijing time (UTC+8). Four presets rotate: Swift Night (both sides +20% speed),
-Gem Harvest (double pickup range, enemies +30% HP), Tough Trial (70 starting HP,
-weapons +25% base and per-level damage), and Swarm (25% higher wave minimums,
-enemies 10% slower). Values and labels live in data/challenges.json. Normal mode
-keeps the original rules. Both modes last two minutes.
+in Beijing time (UTC+8). Each day a hash of the rules version and the date draws
+one combo shape plus three modifiers from the pools in data/challenges.json:
+one curse with two boons, two curses with one boon, or one of each including a
+neutral word. The same library of words feeds every day, so every device faces
+the same draw.
+
+The pools mix numeric words (frenzy +20% enemy speed, hardened +30% enemy HP,
+frail 70 starting HP, swarm +25% wave minimums, swift +20% hero speed,
+magnetize double pickup range, elite +25% weapon damage, slow -10% enemy speed)
+with four behaviour words:
+
+- **Back to Basics** (curse): no upgrade cards appear at all. Opening attack is
+  +200% and HP +100%; each level adds a linear +5% attack (level 1 is +205%,
+  level 5 is +225%). Only the opening weapon ever exists.
+- **Instant Kill** (curse): every hit kills on both sides, boss included; hero
+  HP locks to 1. The first hit taken opens a 1.5 s mercy window; the next hit
+  after it ends is lethal. A future out-of-run shield may absorb hits, but
+  daily challenges never grant out-of-run items, so seeded runs stay comparable.
+- **Blood Feast** (boon): both sides heal 5% of the damage they deal, capped by
+  their maximum HP; instant kills heal by the target's remaining HP.
+- **Lightning Night** (neutral): the whole game, clock included, runs at 3x
+  (about 40 real seconds per run) by taking three fixed simulation steps per
+  tick. The 1/60 s step, collision checks and seeds stay exact.
+
+Normal mode keeps the original rules. Both modes last two in-game minutes.
 
 The date and rules version determine stable enemy and upgrade seeds. Daily
 upgrade randomness is separate from enemy randomness. Repeating the same inputs
 and choices reproduces a run; different play can still change enemy locations
-and later upgrade eligibility. The date and preset stay fixed during a run,
+and later upgrade eligibility. The date and drawn words stay fixed during a run,
 including across midnight. Retry starts the currently available day's challenge.
 Dates use the device clock; this is a personal challenge, not a verified contest.
 
 Completed runs are compared by victory, survived milliseconds, kills, then level
 (higher is better). A tie preserves the earlier record. The home screen shows
-Normal best, today's best, and historical best for today's challenge preset.
-Different presets are not ranked against each other. Gameplay/rules changes use
-a new record version; visual/audio changes do not. Final equipment is saved with
-each best run. Up to 90 daily entries and 100 versioned bests are kept.
+Normal best, today's best, and the historical best for today's exact word
+combination; different combinations are not ranked against each other. Word
+library or balance changes create a new record version automatically; visual or
+audio changes do not. Final equipment is saved with each best run. Up to 90
+daily entries and 100 versioned bests are kept.
 
 On the web, records use localStorage for the current browser and site address.
 Reloading keeps records, but another browser/device/site does not share them,
@@ -135,3 +156,5 @@ unwritable, play continues and the screen says records last only this session.
 
 Run python -m unittest and python tools/smoke_check.py (optionally --no-audio).
 The smoke check uses an isolated temporary record file, never your real bests.
+
+> AI生成
