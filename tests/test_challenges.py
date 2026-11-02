@@ -1,13 +1,22 @@
 import copy
+import math
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import tempfile
 import unittest
 
-from challenges import challenge_day, daily_challenge, load_challenges, version_id, result_for
+from challenges import (challenge_day, daily_challenge, draw_modifiers, load_challenges,
+                        version_id, result_for)
 from records import Records, STORAGE_KEY
 from rules import Game, load_config
+
+
+def forced_definitions(word, kind='curse'):
+    """Definitions that force one specific word every single day."""
+    pools = {'curse': [], 'boon': [], 'neutral': []}
+    pools[kind].append(dict(word))
+    return {'combo_types': [{'id': 'solo', kind: 1}], 'modifiers': pools}
 
 
 class DailyTests(unittest.TestCase):
@@ -26,24 +35,91 @@ class DailyTests(unittest.TestCase):
         self.assertEqual(self.config, original)
         self.assertNotEqual(first['seed'], daily_challenge(self.config, self.definitions, '2026-10-30')['seed'])
 
-    def test_all_presets_match_described_modifiers(self):
-        days = [daily_challenge(self.config, self.definitions, f'2026-10-{d}') for d in range(25,29)]
-        self.assertEqual(len({d['preset']['id'] for d in days}), 4)
-        for daily in days:
-            cfg, name = daily['config'], daily['preset']['id']
-            self.assertEqual(cfg['goal'], self.config['goal'])
-            if name == 'swift':
-                self.assertEqual(cfg['hero']['speed'], self.config['hero']['speed']*1.2)
-                self.assertEqual(cfg['enemies']['demon']['speed'], self.config['enemies']['demon']['speed']*1.2)
-            elif name == 'gems':
-                self.assertEqual(cfg['hero']['magnet_radius'], self.config['hero']['magnet_radius']*2)
-                self.assertEqual(cfg['enemies']['slime']['hp'], 39)
-            elif name == 'tough':
-                self.assertEqual(cfg['hero']['hp'], 70)
-                self.assertEqual(cfg['weapons']['spark']['damage'], 25)
-            else:
-                self.assertEqual(cfg['waves'][0]['minimum'], 15)
-                self.assertEqual(cfg['enemies']['bat']['speed'], 90)
+    def test_draw_is_deterministic_for_the_same_day(self):
+        version = version_id(self.config, self.definitions)
+        for day in (f'2026-10-{d}' for d in range(25, 32)):
+            combo_a, words_a = draw_modifiers(self.definitions, day, version)
+            combo_b, words_b = draw_modifiers(self.definitions, day, version)
+            self.assertEqual(combo_a, combo_b, day)
+            self.assertEqual([m['id'] for m in words_a], [m['id'] for m in words_b], day)
+            self.assertEqual(words_a, words_b, day)
+
+    def test_every_day_draws_three_words_matching_a_combo_type(self):
+        for day in (f'2026-11-{d}' for d in range(1, 15)):
+            daily = daily_challenge(self.config, self.definitions, day)
+            self.assertEqual(len(daily['modifiers']), 3)
+            counts = {}
+            for mod in daily['modifiers']:
+                counts[mod['kind']] = counts.get(mod['kind'], 0) + 1
+            combo = next(c for c in self.definitions['combo_types'] if c['id'] == daily['combo'])
+            for kind in ('curse', 'boon', 'neutral'):
+                self.assertEqual(combo.get(kind, 0), counts.get(kind, 0), day)
+
+    def test_words_never_repeat_within_a_day(self):
+        version = version_id(self.config, self.definitions)
+        for day in (f'2026-12-{d}' for d in range(1, 8)):
+            ids = [m['id'] for m in draw_modifiers(self.definitions, day, version)[1]]
+            self.assertEqual(len(ids), len(set(ids)), day)
+
+    def test_modifier_metadata_is_complete(self):
+        for kind, pool in self.definitions['modifiers'].items():
+            self.assertTrue(pool, kind)
+            for mod in pool:
+                for key in ('id', 'name', 'short', 'description'):
+                    self.assertIn(key, mod, f'{kind}/{mod.get("id")} lacks {key}')
+        for combo in self.definitions['combo_types']:
+            self.assertEqual(sum(combo.get(k, 0) for k in ('curse', 'boon', 'neutral')), 3)
+        daily = daily_challenge(self.config, self.definitions, '2026-10-29')
+        self.assertLessEqual(len(daily['preset']['id']), 64)  # records key limit
+
+    def test_numeric_words_apply_described_changes(self):
+        base_hp = self.config['hero']['hp']
+        expectations = {
+            'frenzy': lambda cfg, beh: (cfg['enemies']['bat']['speed'], self.config['enemies']['bat']['speed'] * 1.2),
+            'hardened': lambda cfg, beh: (cfg['enemies']['slime']['hp'], 39),
+            'frail': lambda cfg, beh: (cfg['hero']['hp'], 70),
+            'swarm': lambda cfg, beh: (cfg['waves'][0]['minimum'],
+                                        min(self.config['spawn']['cap'], math.ceil(self.config['waves'][0]['minimum'] * 1.25))),
+            'swift': lambda cfg, beh: (cfg['hero']['speed'], self.config['hero']['speed'] * 1.2),
+            'magnetize': lambda cfg, beh: (cfg['hero']['magnet_radius'], self.config['hero']['magnet_radius'] * 2),
+            'elite': lambda cfg, beh: (cfg['weapons']['spark']['damage'], self.config['weapons']['spark']['damage'] * 1.25),
+            'slow': lambda cfg, beh: (cfg['enemies']['ghost']['speed'], self.config['enemies']['ghost']['speed'] * 0.9),
+        }
+        for kind, pool in self.definitions['modifiers'].items():
+            for word in pool:
+                daily = daily_challenge(self.config, forced_definitions(word, kind), '2026-10-29')
+                cfg, beh = daily['config'], daily['config'].get('modifiers', {})
+                self.assertEqual(cfg['goal'], self.config['goal'])
+                if word['id'] in expectations:
+                    self.assertEqual(expectations[word['id']](cfg, beh)[0], expectations[word['id']](cfg, beh)[1])
+                if word['id'] == 'basics':
+                    self.assertEqual(cfg['hero']['hp'], base_hp * 2)
+                    self.assertTrue(beh.get('no_cards'))
+                    self.assertEqual(beh.get('basics_damage_scale'), 3)
+                    self.assertEqual(beh.get('basics_damage_scale_per_level'), 0.05)
+                if word['id'] == 'instakill':
+                    self.assertTrue(beh.get('instakill'))
+                    self.assertEqual(beh.get('mercy_invincible_seconds'), 1.5)
+                if word['id'] == 'feast':
+                    self.assertEqual(beh.get('lifesteal'), 0.05)
+                if word['id'] == 'haste':
+                    self.assertEqual(beh.get('time_scale'), 3)
+
+    def test_conflicting_words_never_cooccur(self):
+        definitions = {'combo_types': [{'id': 'pair', 'curse': 2}],
+                       'modifiers': {
+                           'curse': [{'id': 'a', 'name': 'A', 'short': 'a', 'description': 'a',
+                                      'conflicts': ['b'], 'enemy_speed': 1.1},
+                                     {'id': 'b', 'name': 'B', 'short': 'b', 'description': 'b',
+                                      'enemy_speed': 1.1},
+                                     {'id': 'c', 'name': 'C', 'short': 'c', 'description': 'c',
+                                      'enemy_speed': 1.1}],
+                           'boon': [], 'neutral': []}}
+        for day in (f'2027-01-{d}' for d in range(1, 10)):
+            _, modifiers = draw_modifiers(definitions, day, 'v-test')
+            ids = {m['id'] for m in modifiers}
+            self.assertEqual(len(ids), 2, day)
+            self.assertFalse({'a', 'b'} <= ids, day)
 
     def test_gameplay_version_isolates_balance_changes(self):
         version = version_id(self.config, self.definitions)
@@ -53,6 +129,12 @@ class DailyTests(unittest.TestCase):
         self.assertEqual(version, version_id(self.config, self.definitions))
         self.config['hero']['hp'] += 1
         self.assertNotEqual(version, version_id(self.config, self.definitions))
+
+    def test_word_library_change_isolates_records(self):
+        version = version_id(self.config, self.definitions)
+        changed = copy.deepcopy(self.definitions)
+        changed['modifiers']['boon'][0]['lifesteal'] = 0.06
+        self.assertNotEqual(version, version_id(self.config, changed))
 
     def test_daily_upgrade_randomness_independent_of_spawn_rng(self):
         daily = daily_challenge(self.config, self.definitions, '2026-10-29')
@@ -75,6 +157,16 @@ class DailyTests(unittest.TestCase):
                 game.update((90, 60))
         self.assertEqual((a.elapsed,a.hp,a.kills,a.weapons), (b.elapsed,b.hp,b.kills,b.weapons))
         self.assertEqual([(e.x,e.y,e.hp) for e in a.enemies], [(e.x,e.y,e.hp) for e in b.enemies])
+
+    def test_basics_day_offers_no_cards_but_levels_still_stack(self):
+        word = next(m for m in self.definitions['modifiers']['curse'] if m['id'] == 'basics')
+        daily = daily_challenge(self.config, forced_definitions(word), '2026-10-29')
+        game = Game(daily['config'], seed=daily['seed'], card_seed=daily['card_seed'])
+        for expected_level in (2, 3):
+            game.gain_xp(game.xp_needed)  # exact level cost, no surplus
+            self.assertEqual(game.cards, [])
+            self.assertEqual(game.level, expected_level)
+            self.assertEqual(game.xp, 0)
 
 
 class FakeWeb:
@@ -140,7 +232,7 @@ class RecordTests(unittest.TestCase):
 
     def test_corrupt_and_wrong_shape_saves_do_not_crash(self):
         for raw in ('{', '[]', '{"schema":1,"entries":[]}',
-                    '{"schema":1,"entries":{"normal:test-v1":{"victory":true}}}'):
+                     '{"schema":1,"entries":{"normal:test-v1":{"victory":true}}}'):
             self.path.write_text(raw)
             self.assertIsNone(Records(path=self.path).best('normal','test-v1'))
 

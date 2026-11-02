@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import random
 
 CHALLENGE_ZONE = timezone(timedelta(hours=8))
 
@@ -24,25 +25,108 @@ def version_id(config, definitions):
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
-def daily_challenge(base, definitions, day=None):
-    day = day or challenge_day()
-    ordinal = date.fromisoformat(day).toordinal()
-    preset = definitions['presets'][ordinal % len(definitions['presets'])]
-    config = deepcopy(base)
-    config['hero']['speed'] *= preset.get('hero_speed', 1)
-    config['hero']['hp'] = preset.get('hero_hp', config['hero']['hp'])
-    config['hero']['magnet_radius'] *= preset.get('magnet', 1)
+def _pick_without_conflicts(pool, count, taken, rng):
+    """Draw up to count distinct words, skipping ids taken or conflicting with them."""
+    chosen = []
+    while len(chosen) < count:
+        available = [mod for mod in pool
+                     if mod['id'] not in taken and not (set(mod.get('conflicts', ())) & taken)]
+        if not available:
+            break
+        mod = rng.choice(available)
+        chosen.append(dict(mod))
+        taken.add(mod['id'])
+    return chosen
+
+
+def draw_modifiers(definitions, day, version):
+    """Deterministic daily draw: one combo type, then its modifiers per pool.
+
+    The combo type and the words come from a hash of (version, day), so every
+    device faces the same rules on the same day, and the draw changes when the
+    word library changes (which also bumps the records version).
+    """
+    rng = random.Random(f'modifiers:{version}:{day}')
+    combo = rng.choice(definitions['combo_types'])
+    pools = definitions['modifiers']
+    taken = set()
+    modifiers = []
+    for kind in ('curse', 'boon', 'neutral'):
+        for mod in _pick_without_conflicts(pools.get(kind, []), combo.get(kind, 0), taken, rng):
+            modifiers.append({**mod, 'kind': kind})
+    return combo, modifiers
+
+
+def _apply_modifier_fields(config, modifiers):
+    """Apply numeric fields: absolute overrides first, then order-free multipliers.
+
+    Order independence matters: several speed/HP words can coexist on one day,
+    and their product must not depend on the draw order.
+    """
+    for mod in modifiers:
+        if 'hero_hp' in mod:
+            config['hero']['hp'] = mod['hero_hp']
+    hero_speed = magnet = enemy_speed = enemy_hp = weapon_damage = wave_size = 1.0
+    for mod in modifiers:
+        hero_speed *= mod.get('hero_speed', 1)
+        magnet *= mod.get('magnet', 1)
+        enemy_speed *= mod.get('enemy_speed', 1)
+        enemy_hp *= mod.get('enemy_hp', 1)
+        weapon_damage *= mod.get('weapon_damage', 1)
+        wave_size *= mod.get('wave_size', 1)
+        if mod.get('hero_hp_scale'):
+            config['hero']['hp'] = round(config['hero']['hp'] * mod['hero_hp_scale'])
+    config['hero']['speed'] *= hero_speed
+    config['hero']['magnet_radius'] *= magnet
     for enemy in config['enemies'].values():
-        enemy['speed'] *= preset.get('enemy_speed', 1)
-        enemy['hp'] = math.ceil(enemy['hp'] * preset.get('enemy_hp', 1))
+        enemy['speed'] *= enemy_speed
+        enemy['hp'] = math.ceil(enemy['hp'] * enemy_hp)
     for name in ('spark', 'blades', 'ring'):
         for stat in ('damage', 'damage_per_level'):
-            config['weapons'][name][stat] *= preset.get('weapon_damage', 1)
+            config['weapons'][name][stat] *= weapon_damage
     for wave in config['waves']:
-        wave['minimum'] = min(config['spawn']['cap'], math.ceil(wave['minimum'] * preset.get('wave_size', 1)))
+        wave['minimum'] = min(config['spawn']['cap'], math.ceil(wave['minimum'] * wave_size))
+
+
+def _apply_modifier_behaviour(config, modifiers):
+    """Collect behaviour flags into config['modifiers'] for the rules layer.
+
+    Normal runs carry no 'modifiers' section at all, so every flag defaults to
+    off and the classic rules stay untouched.
+    """
+    behaviour = {}
+    for mod in modifiers:
+        if mod.get('no_cards'):
+            behaviour['no_cards'] = True
+            behaviour['basics_damage_scale'] = mod.get('weapon_damage_scale', 1)
+            behaviour['basics_damage_scale_per_level'] = mod.get('weapon_damage_scale_per_level', 0)
+        if mod.get('instakill'):
+            behaviour['instakill'] = True
+            behaviour['mercy_invincible_seconds'] = mod.get('mercy_invincible_seconds', 0)
+        if 'lifesteal' in mod:
+            behaviour['lifesteal'] = mod['lifesteal']
+        if 'time_scale' in mod:
+            behaviour['time_scale'] = int(mod['time_scale'])
+    if behaviour:
+        config['modifiers'] = behaviour
+    return behaviour
+
+
+def daily_challenge(base, definitions, day=None):
+    day = day or challenge_day()
     version = version_id(base, definitions)
+    combo, modifiers = draw_modifiers(definitions, day, version)
+    config = deepcopy(base)
+    _apply_modifier_fields(config, modifiers)
+    _apply_modifier_behaviour(config, modifiers)
     digest = hashlib.sha256(f'{version}:{day}'.encode()).digest()
-    return {'day': day, 'version': version, 'preset': preset, 'config': config,
+    return {'day': day, 'version': version, 'combo': combo['id'],
+            'modifiers': [{'id': mod['id'], 'name': mod['name'],
+                           'short': mod.get('short', ''), 'description': mod['description'],
+                           'kind': mod['kind']} for mod in modifiers],
+            'preset': {'id': '+'.join(mod['id'] for mod in modifiers),
+                       'name': ' · '.join(mod['name'] for mod in modifiers)},
+            'config': config,
             'seed': int.from_bytes(digest[:8], 'big'),
             'card_seed': int.from_bytes(digest[8:16], 'big')}
 

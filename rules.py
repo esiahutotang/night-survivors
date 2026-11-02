@@ -20,6 +20,7 @@ class Enemy:
     contact_cooldown: float = 0
     blade_cooldowns: dict = field(default_factory=dict)
     kind: str = "bat"
+    max_hp: float = 0  # Full HP at spawn; lifesteal never heals beyond it.
 
 
 @dataclass
@@ -43,6 +44,15 @@ class Gem:
 class Game:
     def __init__(self, config=None, seed=None, card_seed=None, character=None):
         self.config = config if config is not None else load_config()
+        # Daily-modifier behaviour flags; absent on normal runs, so all defaults are off.
+        self.mods = self.config.get("modifiers", {})
+        # Global hit invincibility timer, used only by the instakill mercy window.
+        self.invincible = 0.0
+        # True once the instakill mercy window has been used; the next hit kills.
+        self.mercy_spent = False
+        # Reserved for a future out-of-run shield item. Daily challenges must
+        # never grant it, so seeded runs stay comparable across devices.
+        self.shield = 0
         self.character = character
         self.starting_bonus = self.config.get("characters", {}).get(character, {})
         self.rng = random.Random(seed)
@@ -96,7 +106,8 @@ class Game:
 
     def create_enemy(self, kind):
         x, y = self.circle_position()
-        enemy = Enemy(x, y, self.config["enemies"][kind]["hp"], kind=kind)
+        hp = self.config["enemies"][kind]["hp"]
+        enemy = Enemy(x, y, hp, kind=kind, max_hp=hp)
         self.enemies.append(enemy)
         return enemy
 
@@ -117,6 +128,9 @@ class Game:
 
     @property
     def max_hp(self):
+        if self.mods.get("instakill"):
+            # Mutual instant kills make every hit lethal; HP shown as 1/1.
+            return 1
         return self.config["hero"]["hp"] + self.passives["heart"] * self.config["passives"]["heart_hp"]
 
     @property
@@ -144,6 +158,11 @@ class Game:
             stats["count"] += sum(level <= extra+1 for level in stats["extra_blade_levels"])
         else:
             stats["radius"] += extra * stats["radius_per_level"]
+        # Back-to-basics day: flat attack scale that grows linearly with level.
+        scale = self.mods.get("basics_damage_scale")
+        if scale:
+            per_level = self.mods.get("basics_damage_scale_per_level", 0)
+            stats["damage"] *= scale + per_level * (self.level - 1)
         return stats
 
     def blade_positions(self):
@@ -160,7 +179,18 @@ class Game:
         self._check_level_up()
 
     def _check_level_up(self):
-        if self.cards or self.finished or self.xp < self.xp_needed:
+        if self.finished or self.xp < self.xp_needed:
+            return
+        if self.mods.get("no_cards"):
+            # Back-to-basics day: levels only drive the linear attack growth,
+            # no cards are offered and play never pauses. Surplus XP carries over.
+            self.cards = []
+            while not self.finished and self.xp >= self.xp_needed:
+                self.xp -= self.xp_needed
+                self.level += 1
+                self.notify("level_up")
+            return
+        if self.cards:
             return
         self.xp -= self.xp_needed
         self.level += 1
@@ -196,8 +226,15 @@ class Game:
         return True
 
     def hurt_enemy(self, bat, damage):
+        if self.mods.get("instakill"):
+            # Every hit kills; the damage dealt equals the target's remaining HP
+            # so lifesteal and the hit number stay truthful.
+            damage = bat.hp
         self.notify("hit", x=bat.x, y=bat.y, amount=damage)
         bat.hp -= damage
+        lifesteal = self.mods.get("lifesteal", 0)
+        if lifesteal and damage > 0 and self.hp < self.max_hp:
+            self.hp = min(self.max_hp, self.hp + damage * lifesteal)
         if bat.hp <= 0:
             self.notify("death", x=bat.x, y=bat.y, kind=bat.kind)
             self.enemies.remove(bat)
@@ -221,6 +258,8 @@ class Game:
         cfg = self.config
         dt = cfg["simulation"]["step"]
         self.elapsed += dt
+        if self.invincible > 0:
+            self.invincible = max(0.0, self.invincible - dt)
         if direction is not None:
             dx, dy = direction
             distance = math.hypot(dx, dy)
@@ -256,13 +295,41 @@ class Game:
             if (math.hypot(bat.x - self.x, bat.y - self.y) <=
                     cfg["hero"]["radius"] + bat_cfg["radius"] and
                     bat.contact_cooldown <= 1e-9):
-                self.hp = max(0, self.hp - bat_cfg["damage"])
-                self.notify("hurt", x=self.x, y=self.y, amount=bat_cfg["damage"])
-                bat.contact_cooldown = cfg["contact_interval"]
-                if self.hp == 0:
-                    self.game_over = True
-                    self.notify("game_over")
-                    return
+                if self.shield > 0:
+                    # Reserved out-of-run shield: absorbs one hit, even a lethal one.
+                    self.shield -= 1
+                    self.notify("shield_block", x=self.x, y=self.y)
+                    bat.contact_cooldown = cfg["contact_interval"]
+                elif self.invincible > 1e-9:
+                    # Mercy window: immune, but the attacker stays hot, so the
+                    # window must be used to actually escape.
+                    pass
+                elif self.mods.get("instakill"):
+                    mercy = self.mods.get("mercy_invincible_seconds", 0)
+                    if not self.mercy_spent and mercy > 0:
+                        # First hit is forgiven and buys the mercy window; the
+                        # next hit taken after it ends is instantly lethal.
+                        self.mercy_spent = True
+                        self.invincible = mercy
+                        self.notify("mercy", x=self.x, y=self.y)
+                    else:
+                        self.hp = 0
+                        self.notify("hurt", x=self.x, y=self.y, amount=self.max_hp)
+                        self.game_over = True
+                        self.notify("game_over")
+                        return
+                else:
+                    amount = bat_cfg["damage"]
+                    self.hp = max(0, self.hp - amount)
+                    self.notify("hurt", x=self.x, y=self.y, amount=amount)
+                    lifesteal = self.mods.get("lifesteal", 0)
+                    if lifesteal and amount > 0 and bat.max_hp > bat.hp:
+                        bat.hp = min(bat.max_hp, bat.hp + amount * lifesteal)
+                    bat.contact_cooldown = cfg["contact_interval"]
+                    if self.hp == 0:
+                        self.game_over = True
+                        self.notify("game_over")
+                        return
 
         spark_cfg = self.weapon_stats("spark")
         self.attack_clock = max(0, self.attack_clock - dt)
