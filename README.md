@@ -114,8 +114,9 @@ the same draw.
 
 The pools mix numeric words (frenzy +20% enemy speed, hardened +30% enemy HP,
 frail 70 starting HP, swarm +25% wave minimums, swift +20% hero speed,
-magnetize double pickup range, elite +25% weapon damage, slow -10% enemy speed)
-with four behaviour words:
+magnetize double pickup range, elite +25% weapon damage, slow -10% enemy speed,
+death touch +50% enemy contact damage, greed feast double gem XP and double
+damage taken) with behaviour words:
 
 - **Back to Basics** (curse): no upgrade cards appear at all. Opening attack is
   +200% and HP +100%; each level adds a linear +5% attack (level 1 is +205%,
@@ -124,11 +125,24 @@ with four behaviour words:
   HP locks to 1. The first hit taken opens a 1.5 s mercy window; the next hit
   after it ends is lethal. A future out-of-run shield may absorb hits, but
   daily challenges never grant out-of-run items, so seeded runs stay comparable.
+- **Early Judgment** (curse): the demon arrives at 0:45 instead of 1:30; the
+  wave structure itself is unchanged.
+- **Boss Rush** (curse): four demons appear at 1:00, 1:30, 1:45 and 1:55, each
+  later one stronger — HP, speed, damage and sprite size all scale up.
+- **Fog Night** (curse): heavy fog hides everything beyond a small clear area
+  around the hero.
 - **Blood Feast** (boon): both sides heal 5% of the damage they deal, capped by
   their maximum HP; instant kills heal by the target's remaining HP.
+- **Windfall** (boon): level-ups offer four cards instead of three. Conflicts
+  with Single Choice, so both can never appear on the same day.
 - **Lightning Night** (neutral): the whole game, clock included, runs at 3x
   (about 40 real seconds per run) by taking three fixed simulation steps per
-  tick. The 1/60 s step, collision checks and seeds stay exact.
+  tick. The 1/60 s step, collision checks and seeds stay exact; `time_scale`
+  lives in the JSON for easy tuning.
+- **Single Choice** (neutral): level-ups offer exactly one card — the growth
+  is fated. Conflicts with Windfall.
+- **Greed Feast** (neutral): gems are worth double XP, but every hit you take
+  deals double damage.
 
 Normal mode keeps the original rules. Both modes last two in-game minutes.
 

@@ -11,6 +11,31 @@ from challenges import challenge_day, daily_challenge, load_challenges, version_
 from records import Records
 
 
+def card_layout(width, count):
+    """Upgrade card rects for an offering size; cards keep their fixed height.
+    """
+    if count <= 3:
+        return [pygame.Rect(20, 180 + i*132, width-40, 112) for i in range(count)]
+    return [pygame.Rect(20, 150 + i*133, width-40, 112) for i in range(count)]
+
+
+def make_fog_surface(width, height):
+    """Radial vignette: a small clear circle around the hero, then darkness.
+    Pure presentation; it never touches the rules or their random generator.
+    """
+    surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    inner, outer = 130, 400
+    steps = 30
+    for i in range(steps):
+        t = (i + 1) / steps
+        pygame.draw.circle(surface,
+                           (8, 12, 24, round(230 * (t ** 1.4))),
+                           (width // 2, height // 2),
+                           round(inner + (outer - inner) * t),
+                           max(1, math.ceil((outer - inner) / steps) + 2))
+    return surface
+
+
 class Feedback:
     """Cosmetic state only; it never changes the rules or their random generator."""
     def __init__(self, config, sprites):
@@ -159,14 +184,31 @@ async def main():
     finger = None
     accumulator = 0.0
     running = True
-    card_rects = [pygame.Rect(20, 180 + i*132, width-40, 112)
-                  for i in range(config["growth"]["cards"])]
+
+    def card_rects_for(count):
+        return card_layout(width, count)
+
+    boss_sprites = {}
+
+    def boss_sprite(scale):
+        cached = boss_sprites.get(scale)
+        if cached is None:
+            size = sprites["demon"].get_size()
+            cached = pygame.transform.scale(sprites["demon"],
+                                            (round(size[0]*scale), round(size[1]*scale)))
+            boss_sprites[scale] = cached
+        return cached
+
+    def make_fog():
+        return make_fog_surface(width, height)
+
+    fog_surface = None
     upgrade_ui = UpgradeUI(font_path)
     menu = MenuUI(config, sprites, font_path)
 
     def choose_at(position):
         nonlocal pointer, finger, accumulator
-        for index, rect in enumerate(card_rects):
+        for index, rect in enumerate(card_rects_for(len(game.cards))):
             if rect.collidepoint(position):
                 game.choose_card(index)
                 pointer = None
@@ -180,7 +222,7 @@ async def main():
         screen.blit(surface, rect)
 
     def restart():
-        nonlocal game, config, accumulator, pointer, finger, today, mode, run_day, run_preset, recorded, new_best, run_version
+        nonlocal game, config, accumulator, pointer, finger, today, mode, run_day, run_preset, recorded, new_best, run_version, fog_surface
         mode = menu.mode
         today = daily_challenge(base_config, definitions)
         run_day = today['day']
@@ -195,6 +237,7 @@ async def main():
         accumulator = 0.0
         pointer = None
         finger = None
+        fog_surface = make_fog() if config.get("modifiers", {}).get("fog") else None
 
     def menu_click(position):
         nonlocal pointer, finger, accumulator
@@ -304,6 +347,8 @@ async def main():
         for bat in game.enemies:
             pos = (round(bat.x + origin_x), round(bat.y + origin_y))
             sprite = sprites[bat.kind]
+            if bat.boss_scale != 1.0:
+                sprite = boss_sprite(bat.boss_scale)
             screen.blit(sprite, sprite.get_rect(center=pos))
         for spark in game.sparks:
             pygame.draw.circle(screen, (255, 224, 105), (round(spark.x+origin_x), round(spark.y+origin_y)), config["weapons"]["spark"]["radius"])
@@ -312,6 +357,8 @@ async def main():
         for x, y in game.blade_positions():
             sprite = sprites["sword"]
             screen.blit(sprite, sprite.get_rect(center=(round(x+origin_x), round(y+origin_y))))
+        if fog_surface is not None:
+            screen.blit(fog_surface, (0, 0))
         feedback.draw(screen, (origin_x, origin_y), font)
 
         pygame.draw.rect(screen, (12, 18, 30), (0, 0, width, 102))
@@ -335,10 +382,12 @@ async def main():
             veil.fill((6, 10, 20, 215))
             screen.blit(veil, (0, 0))
             if game.cards:
-                text("升级！", (width//2, 110), (122, 232, 213), title, True)
-                text(f"达到 {game.level} 级，选择一项强化", (width//2, 146), centered=True)
-                upgrade_ui.draw_cards(screen, game, card_rects)
-                text("点击卡片，继续战斗", (width//2, 610), centered=True)
+                rects = card_rects_for(len(game.cards))
+                title_y, subtitle_y = (110, 146) if len(rects) <= 3 else (104, 134)
+                text("升级！", (width//2, title_y), (122, 232, 213), title, True)
+                text(f"达到 {game.level} 级，选择一项强化", (width//2, subtitle_y), centered=True)
+                upgrade_ui.draw_cards(screen, game, rects)
+                text("点击卡片，继续战斗", (width//2, max(610, rects[-1].bottom + 16)), centered=True)
             elif game.finished:
                 text("生存胜利" if game.victory else "游戏结束", (width//2, 180),
                      (122, 232, 213) if game.victory else (255, 138, 155), title, True)
