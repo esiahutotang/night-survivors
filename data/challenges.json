@@ -21,7 +21,17 @@
       {"id": "frail", "name": "虚弱", "short": "生命七十",
        "description": "你的基础生命降为 70", "hero_hp": 70},
       {"id": "swarm", "name": "怪潮", "short": "怪量激增",
-       "description": "每波怪物数量提高 25%", "wave_size": 1.25}
+       "description": "每波怪物数量提高 25%", "wave_size": 1.25},
+      {"id": "death_touch", "name": "死亡之触", "short": "敌伤五成",
+       "description": "所有敌人的接触伤害提高 50%", "damage_taken": 1.5},
+      {"id": "early_judgment", "name": "审判提前", "short": "恶魔先至",
+       "description": "恶魔提前到 0:45 出现，波次结构不变", "boss_at": 45},
+      {"id": "boss_rush", "name": "群魔乱舞", "short": "四魔递强",
+       "description": "四个恶魔分别在 1:00、1:30、1:45、1:55 现身，越晚出现的越强：生命、速度、伤害递增，体型也越来越大",
+       "boss_schedule": [{"at": 60, "scale": 1.0}, {"at": 90, "scale": 1.3},
+                          {"at": 105, "scale": 1.6}, {"at": 115, "scale": 2.0}]},
+      {"id": "fog_night", "name": "迷雾之夜", "short": "视野迷雾",
+       "description": "浓雾遮蔽四周，只有你身边的区域清晰可见", "fog": true}
     ],
     "boon": [
       {"id": "feast", "name": "血宴", "short": "双方吸血",
@@ -34,12 +44,21 @@
       {"id": "elite", "name": "精锐", "short": "伤害提升",
        "description": "所有武器基础与每级伤害提高 25%", "weapon_damage": 1.25},
       {"id": "slow", "name": "迟缓", "short": "敌速减慢",
-       "description": "所有敌人移速降低 10%", "enemy_speed": 0.9}
+       "description": "所有敌人移速降低 10%", "enemy_speed": 0.9},
+      {"id": "windfall", "name": "天赐良机", "short": "四选其一",
+       "description": "每次升级可从四张强化卡中选择",
+       "cards": 4, "conflicts": ["single_choice"]}
     ],
     "neutral": [
       {"id": "haste", "name": "闪电之夜", "short": "全局三倍",
        "description": "全局快进三倍（含计时），单局约 40 秒。仿真步长保持 1/60 秒不变，种子与碰撞精度不受影响",
-       "time_scale": 3}
+       "time_scale": 3},
+      {"id": "single_choice", "name": "孤注一掷", "short": "命中注定",
+       "description": "每次升级只出现一张强化卡，接受命中注定的成长",
+       "cards": 1, "conflicts": ["windfall"]},
+      {"id": "greed_feast", "name": "贪婪盛宴", "short": "钱痛翻倍",
+       "description": "敌人掉落的金币经验翻倍，但你受到的伤害也翻倍",
+       "enemy_xp": 2, "damage_taken": 2}
     ]
   }
 }

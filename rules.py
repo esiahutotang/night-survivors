@@ -21,6 +21,7 @@ class Enemy:
     blade_cooldowns: dict = field(default_factory=dict)
     kind: str = "bat"
     max_hp: float = 0  # Full HP at spawn; lifesteal never heals beyond it.
+    boss_scale: float = 1.0  # Boss Rush: later bosses are bigger and stronger.
 
 
 @dataclass
@@ -64,7 +65,9 @@ class Game:
         self.kills = 0
         self.game_over = False
         self.victory = False
-        self.boss_spawned = False
+        # Single boss tracks a bool; Boss Rush day tracks one flag per entry.
+        schedule = self.mods.get("boss_schedule")
+        self.boss_spawned = [False] * len(schedule) if schedule else False
         self.paused = False
         self.spawn_clock = 0.0
         self.attack_clock = 0.0
@@ -104,27 +107,45 @@ class Game:
         radius = self.config["spawn"]["radius"]
         return self.x + math.cos(angle)*radius, self.y + math.sin(angle)*radius
 
-    def create_enemy(self, kind):
+    def create_enemy(self, kind, boss_scale=1.0):
         x, y = self.circle_position()
         hp = self.config["enemies"][kind]["hp"]
-        enemy = Enemy(x, y, hp, kind=kind, max_hp=hp)
+        if boss_scale != 1.0:
+            hp = round(hp * boss_scale)
+        enemy = Enemy(x, y, hp, kind=kind, max_hp=hp, boss_scale=boss_scale)
         self.enemies.append(enemy)
         return enemy
 
-    def ensure_boss(self):
-        due = any(wave.get("boss") and self.elapsed + 1e-9 >= wave["from"]
-                  for wave in self.config["waves"])
-        if self.boss_spawned or not due:
-            return 0
+    def _spawn_boss(self, boss_scale=1.0):
         # Make room at the hard cap so the scheduled boss is never delayed.
         if len(self.enemies) >= self.config["spawn"]["cap"]:
             normal = next((enemy for enemy in self.enemies if enemy.kind != "demon"), None)
             if normal is None:
-                return 0
+                return False
             self.enemies.remove(normal)
-        self.create_enemy("demon")
-        self.boss_spawned = True
-        return 1
+        self.create_enemy("demon", boss_scale=boss_scale)
+        return True
+
+    def ensure_boss(self):
+        schedule = self.mods.get("boss_schedule")
+        if schedule is not None:
+            spawned = 0
+            for index, entry in enumerate(schedule):
+                if self.boss_spawned[index] or self.elapsed + 1e-9 < entry["at"]:
+                    continue
+                if self._spawn_boss(entry.get("scale", 1.0)):
+                    self.boss_spawned[index] = True
+                    spawned += 1
+            return spawned
+        due = any(wave.get("boss") and
+                  self.elapsed + 1e-9 >= (self.mods.get("boss_at") or wave["from"])
+                  for wave in self.config["waves"])
+        if self.boss_spawned or not due:
+            return 0
+        if self._spawn_boss():
+            self.boss_spawned = True
+            return 1
+        return 0
 
     @property
     def max_hp(self):
@@ -286,7 +307,7 @@ class Game:
             dx, dy = self.x - bat.x, self.y - bat.y
             distance = math.hypot(dx, dy)
             if distance:
-                travel = min(bat_cfg["speed"] * dt, distance)
+                travel = min(bat_cfg["speed"] * bat.boss_scale * dt, distance)
                 bat.x += dx / distance * travel
                 bat.y += dy / distance * travel
             bat.contact_cooldown = max(0, bat.contact_cooldown - dt)
@@ -319,7 +340,7 @@ class Game:
                         self.notify("game_over")
                         return
                 else:
-                    amount = bat_cfg["damage"]
+                    amount = bat_cfg["damage"] * bat.boss_scale
                     self.hp = max(0, self.hp - amount)
                     self.notify("hurt", x=self.x, y=self.y, amount=amount)
                     lifesteal = self.mods.get("lifesteal", 0)

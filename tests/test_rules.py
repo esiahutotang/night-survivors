@@ -212,6 +212,66 @@ class ModifierTests(unittest.TestCase):
         self.assertEqual(game.invincible, 0)
         self.assertFalse(game.mercy_spent)
 
+    def quiet_config(self, **behaviour):
+        """A config with no normal spawns, so boss timing can be observed alone."""
+        cfg = copy.deepcopy(self.base)
+        cfg["spawn"]["per_second"] = 0
+        if behaviour:
+            cfg["modifiers"] = dict(behaviour)
+        return cfg
+
+    def test_boss_at_spawns_the_single_boss_early(self):
+        cfg = self.quiet_config(boss_at=45)
+        game = Game(cfg, seed=1)
+        self.advance_seconds(game, 45 - cfg["simulation"]["step"])
+        self.assertEqual([e for e in game.enemies if e.kind == "demon"], [])
+        game.update(None)
+        demons = [e for e in game.enemies if e.kind == "demon"]
+        self.assertEqual(len(demons), 1)
+        self.assertEqual(demons[0].boss_scale, 1.0)
+
+    def test_boss_rush_spawns_four_escalating_bosses(self):
+        cfg = self.quiet_config(boss_schedule=[
+            {"at": 60, "scale": 1.0}, {"at": 90, "scale": 1.3},
+            {"at": 105, "scale": 1.6}, {"at": 115, "scale": 2.0}])
+        cfg["hero"]["hp"] = 10 ** 6  # survive being cornered for two minutes
+        game = Game(cfg, seed=1)
+        game.attack_clock = float("inf")  # keep bosses alive for the check
+        self.advance_seconds(game, 116)
+        demons = [e for e in game.enemies if e.kind == "demon"]
+        self.assertEqual([round(d.hp) for d in demons], [800, 1040, 1280, 1600])
+        self.assertEqual([d.boss_scale for d in demons], [1.0, 1.3, 1.6, 2.0])
+
+    def test_boss_scale_multiplies_speed(self):
+        games = {}
+        for scale in (1.0, 2.0):
+            game = Game(self.quiet_config(), seed=1)
+            game.attack_clock = float("inf")
+            game.create_enemy("demon", boss_scale=scale)
+            game.enemies[-1].x, game.enemies[-1].y = 40, 0
+            game.update(None)
+            games[scale] = game.enemies[0].x
+        demon_speed = self.base["enemies"]["demon"]["speed"]
+        self.assertAlmostEqual(games[1.0], 40 - demon_speed * self.base["simulation"]["step"])
+        self.assertAlmostEqual(games[2.0], 40 - 2 * demon_speed * self.base["simulation"]["step"])
+
+    def test_boss_scale_multiplies_contact_damage(self):
+        game = Game(self.quiet_config(), seed=1)
+        game.attack_clock = float("inf")
+        game.create_enemy("demon", boss_scale=2.0)
+        game.enemies[-1].x, game.enemies[-1].y = 0, 0  # move it on top of the hero
+        game.update(None)  # it bites immediately
+        self.assertEqual(game.hp,
+                         self.base["hero"]["hp"] - 2 * self.base["enemies"]["demon"]["damage"])
+
+    def test_offer_count_follows_growth_cards(self):
+        for cards, expected in ((1, 1), (3, 3), (4, 4)):
+            cfg = self.quiet_config()
+            cfg["growth"]["cards"] = cards
+            game = Game(cfg, seed=1)
+            game.gain_xp(game.xp_needed)
+            self.assertEqual(len(game.cards), expected)
+
 
 if __name__ == "__main__":
     unittest.main()

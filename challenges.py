@@ -67,20 +67,29 @@ def _apply_modifier_fields(config, modifiers):
         if 'hero_hp' in mod:
             config['hero']['hp'] = mod['hero_hp']
     hero_speed = magnet = enemy_speed = enemy_hp = weapon_damage = wave_size = 1.0
+    enemy_xp = damage_taken = 1.0
     for mod in modifiers:
         hero_speed *= mod.get('hero_speed', 1)
         magnet *= mod.get('magnet', 1)
         enemy_speed *= mod.get('enemy_speed', 1)
         enemy_hp *= mod.get('enemy_hp', 1)
+        enemy_xp *= mod.get('enemy_xp', 1)
+        damage_taken *= mod.get('damage_taken', 1)
         weapon_damage *= mod.get('weapon_damage', 1)
         wave_size *= mod.get('wave_size', 1)
         if mod.get('hero_hp_scale'):
             config['hero']['hp'] = round(config['hero']['hp'] * mod['hero_hp_scale'])
+        if 'cards' in mod:
+            # Offering size is an override, not a multiplier; the windfall and
+            # single_choice words are marked conflicting, so they never co-occur.
+            config['growth']['cards'] = int(mod['cards'])
     config['hero']['speed'] *= hero_speed
     config['hero']['magnet_radius'] *= magnet
     for enemy in config['enemies'].values():
         enemy['speed'] *= enemy_speed
         enemy['hp'] = math.ceil(enemy['hp'] * enemy_hp)
+        enemy['xp'] = round(enemy['xp'] * enemy_xp)
+        enemy['damage'] *= damage_taken
     for name in ('spark', 'blades', 'ring'):
         for stat in ('damage', 'damage_per_level'):
             config['weapons'][name][stat] *= weapon_damage
@@ -107,6 +116,12 @@ def _apply_modifier_behaviour(config, modifiers):
             behaviour['lifesteal'] = mod['lifesteal']
         if 'time_scale' in mod:
             behaviour['time_scale'] = int(mod['time_scale'])
+        if mod.get('fog'):
+            behaviour['fog'] = True
+        if 'boss_at' in mod:
+            behaviour['boss_at'] = mod['boss_at']
+        if 'boss_schedule' in mod:
+            behaviour['boss_schedule'] = mod['boss_schedule']
     if behaviour:
         config['modifiers'] = behaviour
     return behaviour

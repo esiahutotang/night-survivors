@@ -105,6 +105,32 @@ class DailyTests(unittest.TestCase):
                 if word['id'] == 'haste':
                     self.assertEqual(beh.get('time_scale'), 3)
 
+                if word['id'] == 'death_touch':
+                    self.assertAlmostEqual(cfg['enemies']['bat']['damage'],
+                                           self.config['enemies']['bat']['damage'] * 1.5)
+                if word['id'] == 'greed_feast':
+                    self.assertEqual(cfg['enemies']['bat']['xp'],
+                                     self.config['enemies']['bat']['xp'] * 2)
+                    self.assertEqual(cfg['enemies']['bat']['damage'],
+                                     self.config['enemies']['bat']['damage'] * 2)
+                if word['id'] == 'windfall':
+                    self.assertEqual(cfg['growth']['cards'], 4)
+                if word['id'] == 'single_choice':
+                    self.assertEqual(cfg['growth']['cards'], 1)
+                if word['id'] == 'fog_night':
+                    self.assertTrue(beh.get('fog'))
+                if word['id'] == 'early_judgment':
+                    self.assertEqual(beh.get('boss_at'), 45)
+                if word['id'] == 'boss_rush':
+                    self.assertEqual([entry['at'] for entry in beh.get('boss_schedule')],
+                                     [60, 90, 105, 115])
+
+    def test_conflicting_offer_words_never_cooccur(self):
+        for day in (f'2027-02-{d:02d}' for d in range(1, 29)):
+            daily = daily_challenge(self.config, self.definitions, day)
+            ids = {m['id'] for m in daily['modifiers']}
+            self.assertFalse({'windfall', 'single_choice'} <= ids, day)
+
     def test_conflicting_words_never_cooccur(self):
         definitions = {'combo_types': [{'id': 'pair', 'curse': 2}],
                        'modifiers': {
