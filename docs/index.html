@@ -1,4 +1,108 @@
-<html lang="zh-CN"><script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type=module id="site" data-python="python3.12" data-LINES=42 data-COLUMNS=132 data-os="vtx,snd,gui" async defer>#<!--
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<script>
+// The runtime's own status/progress nodes remain available, but this UI owns
+// its text and only reports byte progress for the actual game archive.
+(() => {
+    let phase = 'runtime', finished = false, failed = false;
+    let loaded = 0, total = 0;
+    const messages = {
+        runtime: ['准备运行环境', '首次打开需要下载运行环境，之后会使用浏览器缓存。'],
+        download: ['下载游戏资源', '正在下载角色、音效与每日挑战数据。'],
+        unpack: ['解压游戏资源', '资源已下载，正在准备游戏文件。'],
+        components: ['初始化游戏', '正在载入游戏组件，请稍候。'],
+        ready: ['准备就绪', '点击开始，启用声音并进入游戏。']
+    };
+    const node = id => document.getElementById(id);
+    function render() {
+        if (!node('loading-screen')) return;
+        node('loading-screen').hidden = finished;
+        if (finished) return;
+        const message = failed ? ['加载未完成', '请检查网络后重试；首次加载需要连接运行环境服务。'] : messages[phase];
+        node('loading-status').textContent = message[0];
+        node('loading-hint').textContent = message[1];
+        const bar = node('loading-progress');
+        bar.hidden = failed;
+        if (!failed && phase === 'download' && total > 0 && loaded <= total) {
+            bar.max = total;
+            bar.value = loaded;
+            node('loading-detail').textContent = `${Math.floor(loaded / total * 100)}% · ${(loaded / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB`;
+        } else {
+            bar.removeAttribute('value');
+            node('loading-detail').textContent = phase === 'download' && loaded ? `已接收 ${(loaded / 1048576).toFixed(1)} MB` : '每日挑战 · 每天三个增益 / 减益词条';
+        }
+        if (phase === 'ready' && !failed) { bar.max = 1; bar.value = 1; }
+        node('loading-action').hidden = !failed && phase !== 'ready';
+        node('loading-action').textContent = failed ? '重新加载' : '点击开始';
+    }
+    window.NightLoader = {
+        stage(next) {
+            if (finished || failed || !messages[next]) return;
+            phase = next;
+            render();
+        },
+        complete() { if (failed) return; finished = true; render(); },
+        fail() { if (finished) return; failed = true; render(); }
+    };
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async function(input, options) {
+        const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
+        const archive = url.origin === location.origin && /\/night-survivors\.(apk|tar\.gz)$/.test(url.pathname);
+        if (!archive) return nativeFetch(input, options);
+        window.NightLoader.stage('download');
+        try {
+            const response = await nativeFetch(input, options);
+            if (!response.ok) throw new Error(`Game download: HTTP ${response.status}`);
+            loaded = 0;
+            // Encoded HTTP bodies can report a wire length unlike decoded bytes.
+            total = response.headers.get('Content-Encoding') ? 0 : Number(response.headers.get('Content-Length')) || 0;
+            if (!response.body || typeof ReadableStream === 'undefined') return response;
+            const reader = response.body.getReader();
+            const stream = new ReadableStream({
+                async pull(controller) {
+                    try {
+                        const chunk = await reader.read();
+                        if (chunk.done) {
+                            controller.close();
+                            window.NightLoader.stage('unpack');
+                        } else {
+                            loaded += chunk.value.byteLength;
+                            render();
+                            controller.enqueue(chunk.value);
+                        }
+                    } catch (error) {
+                        window.NightLoader.fail();
+                        controller.error(error);
+                    }
+                },
+                cancel(reason) { return reader.cancel(reason); }
+            });
+            // A single stream: no second download or cloned, buffered response.
+            return new Response(stream, {status: response.status, statusText: response.statusText, headers: response.headers});
+        } catch (error) {
+            window.NightLoader.fail();
+            throw error;
+        }
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+        render();
+        node('loading-action').addEventListener('click', () => {
+            if (failed) location.reload();
+            // The original runtime listens to the same trusted click to unlock audio.
+        });
+    });
+    window.addEventListener('error', event => {
+        if (event.error || (event.target && event.target.id === 'site')) window.NightLoader.fail();
+    }, true);
+    window.addEventListener('unhandledrejection', () => window.NightLoader.fail());
+    setTimeout(() => {
+        if (!finished && !failed && phase !== 'ready' && node('loading-hint')) {
+            node('loading-hint').textContent = '加载仍在进行。首次下载较慢，请保持网络连接；长时间无变化可刷新重试。';
+        }
+    }, 45000);
+})();
+
+</script>
+<script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type=module id="site" data-python="python3.12" data-LINES=42 data-COLUMNS=132 data-os="vtx,snd,gui" async defer>#<!--
 
 print("""
 Loading night-survivors from night-survivors.apk
@@ -22,83 +126,94 @@ from pathlib import Path
 
 # do not rename
 async def custom_site():
-    import embed
-    platform.document.body.style.background = "#0c121e"
+    try:
+        import embed
+        platform.document.body.style.background = "#0c121e"
 
-    platform.window.transfer.hidden = true
-    platform.window.canvas.style.visibility = "visible"
-
-
-    bundle = "night-survivors"
-
-    # the C or js loader could do that but be explicit.
-    appdir = Path(f"/data/data/{bundle}") # /data/data/night-survivors
-    appdir.mkdir()
+        platform.window.NightLoader.stage("download")
+        platform.window.transfer.hidden = true
+        platform.window.canvas.style.visibility = "visible"
 
 
-    # unpack filesystem from compressed archive into work dir
-    if platform.window.location.host.find('.itch.zone')>0:
-        import zipfile
-        async with platform.fopen("night-survivors.apk?v=coins-roles-1", "rb") as archive:
-            with zipfile.ZipFile(archive) as zip_ref:
-                zip_ref.extractall(appdir.as_posix())
-    else:
-        import tarfile
-        async with platform.fopen("night-survivors.tar.gz?v=coins-roles-1", "rb") as archive:
-            tar = tarfile.open(fileobj=archive, mode="r:gz")
-            tar.extractall(path=appdir.as_posix(), filter='tar')
-            tar.close()
+        bundle = "night-survivors"
 
-    # preloader will change to work dir and prepend it to sys.path
-    platform.run_main(PyConfig, loaderhome= appdir / "assets", loadermain=None)
+        # the C or js loader could do that but be explicit.
+        appdir = Path(f"/data/data/{bundle}") # /data/data/night-survivors
+        appdir.mkdir()
 
 
-    # wait preloading complete : that includes images and wasm compilation of bundled modules
-    while embed.counter()<0:
-        await asyncio.sleep(.1)
+        # unpack filesystem from compressed archive into work dir
+        if platform.window.location.host.find('.itch.zone')>0:
+            import zipfile
+            async with platform.fopen("night-survivors.apk?v=loader-utf8-1", "rb") as archive:
+                with zipfile.ZipFile(archive) as zip_ref:
+                    zip_ref.extractall(appdir.as_posix())
+        else:
+            import tarfile
+            async with platform.fopen("night-survivors.tar.gz?v=loader-utf8-1", "rb") as archive:
+                tar = tarfile.open(fileobj=archive, mode="r:gz")
+                tar.extractall(path=appdir.as_posix(), filter='tar')
+                tar.close()
 
-    main = appdir / "assets" / "main.py"
+        platform.window.NightLoader.stage("components")
 
-    # TODO: test for window.webkitAudioContext and block aio loop until gesture if accessing media manager play
-    # before a gesture is recorded ( touch or click )
+        # preloader will change to work dir and prepend it to sys.path
+        platform.run_main(PyConfig, loaderhome= appdir / "assets", loadermain=None)
 
-    # test/wait user media interaction
-    if not platform.window.MM.UME:
 
-        # now that apk is mounted we have access to font cache
-        # but we need to fill __file__ that is not yet set
-        __import__(__name__).__file__ = main
-
-        # now make a prompt
-        msg  = "点击开始：暗夜幸存者"
-        platform.window.infobox.innerText = msg
-        print("\n"*4, f"    * Waiting for media user engagement. {msg} *" , "\n"*4)
-
-        while not platform.window.MM.UME:
+        # wait preloading complete : that includes images and wasm compilation of bundled modules
+        while embed.counter()<0:
             await asyncio.sleep(.1)
 
-    # start async top level machinery if not started and add a console in any case if requested.
-    await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)
+        main = appdir / "assets" / "main.py"
 
-    # now that apk is mounted we have access to font cache
-    # but we need to fill __file__/__name__ that are not yet set
-    __import__(__name__).__file__ = main
+        # TODO: test for window.webkitAudioContext and block aio loop until gesture if accessing media manager play
+        # before a gesture is recorded ( touch or click )
+
+        # test/wait user media interaction
+        if not platform.window.MM.UME:
+
+            # now that apk is mounted we have access to font cache
+            # but we need to fill __file__ that is not yet set
+            __import__(__name__).__file__ = main
+
+            # now make a prompt
+            platform.window.NightLoader.stage("ready")
+            msg  = "点击开始：暗夜幸存者"
+            platform.window.infobox.innerText = msg
+            print("\n"*4, f"    * Waiting for media user engagement. {msg} *" , "\n"*4)
+
+            while not platform.window.MM.UME:
+                await asyncio.sleep(.1)
+
+        platform.window.NightLoader.stage("components")
+
+        # start async top level machinery if not started and add a console in any case if requested.
+        await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)
+
+        # now that apk is mounted we have access to font cache
+        # but we need to fill __file__/__name__ that are not yet set
+        __import__(__name__).__file__ = main
 
 
-    def ui_callback(pkg):
-        platform.window.infobox.innerText = "正在加载游戏组件，请稍候……"
+        def ui_callback(pkg):
+            platform.window.infobox.innerText = "正在加载游戏组件，请稍候……"
 
-    await shell.source(main, callback=ui_callback)
+        await shell.source(main, callback=ui_callback)
 
-    # if you don't reach that step
-    # your main.py has an infinite sync loop somewhere !
+        # if you don't reach that step
+        # your main.py has an infinite sync loop somewhere !
 
-    platform.window.infobox.style.display = "none"
-    platform.window.config.gui_divider = 1
-    platform.window.window_resize()
-    print("default.tmpl: done")
+        platform.window.infobox.style.display = "none"
+        platform.window.config.gui_divider = 1
+        platform.window.window_resize()
+        print("default.tmpl: done")
 
-    shell.interactive()
+        shell.interactive()
+    except Exception:
+        platform.window.NightLoader.fail()
+        raise
+
 
 asyncio.run( custom_site() )
 
@@ -122,7 +237,7 @@ asyncio.run( custom_site() )
 #
 # do not alter that comment block it is separating python code from html code
 # =============================================================================
-# --></script><head><!--
+# --></script><!--
 //=============================================================================
 //
 //
@@ -179,7 +294,6 @@ function show_infobox() {
 </script>
 
     <title>暗夜幸存者</title>
-    <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="mobile-web-app-capable" content="yes">
@@ -189,6 +303,32 @@ function show_infobox() {
     <link rel="icon" type="image/png" href="favicon.png" sizes="16x16">
 
     <style>
+        #transfer, #infobox { display: none !important; }
+        #loading-screen {
+            position: fixed; inset: 0; z-index: 1000000;
+            display: grid; place-items: center;
+            background: radial-gradient(ellipse at 50% 30%, #1c3345, #0c121e 75%);
+            color: #e2ebf6;
+            font-family: system-ui, -apple-system, "Microsoft YaHei", "PingFang SC", sans-serif;
+        }
+        #loading-screen[hidden] { display: none; }
+        .loading-card { width: min(330px, calc(100vw - 48px)); text-align: center; }
+        .loading-mark { color: #ffdc94; font-size: 36px; margin-bottom: 18px; }
+        .loading-card h1 { color: #7ae8d5; font-size: 30px; margin: 0 0 12px; letter-spacing: 3px; }
+        .loading-tagline { color: #9eb4c9; font-size: 14px; margin-bottom: 44px; }
+        #loading-status { font-size: 18px; margin-bottom: 18px; }
+        #loading-progress { width: 100%; height: 12px; accent-color: #7ae8d5; border: 0; border-radius: 9px; overflow: hidden; }
+        #loading-progress::-webkit-progress-bar { background: #293c50; border-radius: 9px; }
+        #loading-progress::-webkit-progress-value { background: #7ae8d5; border-radius: 9px; }
+        #loading-progress::-moz-progress-bar { background: #7ae8d5; border-radius: 9px; }
+        #loading-progress:indeterminate { background: linear-gradient(100deg, #293c50 20%, #7ae8d5 50%, #293c50 80%); background-size: 200% 100%; animation: loading-pulse 1.6s linear infinite; }
+        #loading-detail { color: #9eb4c9; font-size: 13px; min-height: 20px; margin-top: 12px; }
+        #loading-hint { color: #b4c5d6; font-size: 14px; line-height: 1.8; margin: 24px 0; }
+        #loading-action { background: #7ae8d5; color: #10222e; border: 0; border-radius: 9px; padding: 14px 32px; font: inherit; font-weight: bold; cursor: pointer; min-height: 48px; }
+        #loading-action:focus-visible { outline: 3px solid #ffdc94; outline-offset: 4px; }
+        @keyframes loading-pulse { to { background-position: -200% 0; } }
+        @media (prefers-reduced-motion: reduce) { #loading-progress { animation: none; } }
+
         #status {
             display: inline-block;
             vertical-align: top;
@@ -309,6 +449,20 @@ function show_infobox() {
 </head>
 
 <body>
+
+    <section id="loading-screen" aria-label="游戏加载">
+        <div class="loading-card">
+            <div class="loading-mark" aria-hidden="true">✦</div>
+            <h1>暗夜幸存者</h1>
+            <p class="loading-tagline">躲避怪潮，迎接今天的挑战</p>
+            <div id="loading-status" role="status" aria-live="polite">准备运行环境</div>
+            <progress id="loading-progress" aria-label="当前阶段进度"></progress>
+            <div id="loading-detail"></div>
+            <p id="loading-hint">首次打开需要下载运行环境，之后会使用浏览器缓存。</p>
+            <button type="button" id="loading-action" hidden>点击开始</button>
+        </div>
+    </section>
+
 
     <div id="transfer" align=center>
 <!--        <div class="spinner" id='spinner'></div> -->
