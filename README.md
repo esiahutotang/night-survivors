@@ -188,3 +188,10 @@ closes after the first pygame frame; network/startup failures offer a retry.
 No daily challenge rules or personal-record versions change in this fix.
 
 Optional loader checks (Node.js built-ins only): `node tools/check_loading.cjs`.
+
+To refresh the checked-in game archives without changing the runtime loader,
+run `python tools/build_web_payload.py`. Verify them with
+`python tools/build_web_payload.py --check`. This includes every runtime module,
+data file, finished asset and sound; it excludes personal saves and working art.
+After payload changes, bump the archive query version in both default.tmpl and
+docs/index.html so cached browsers request the new payload.
