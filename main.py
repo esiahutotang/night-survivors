@@ -254,6 +254,19 @@ async def main():
         accumulator = 0.0
         return True
 
+    loader_finished = False
+
+    def present():
+        nonlocal loader_finished
+        pygame.display.flip()
+        if not loader_finished:
+            if sys.platform == 'emscripten':
+                import platform
+                loader = getattr(platform.window, 'NightLoader', None)
+                if loader is not None:
+                    loader.complete()
+            loader_finished = True
+
     while running:
         frame_time = min(clock.tick(0 if sys.platform == "emscripten" else config["screen"]["fps"]) / 1000,
                          config["simulation"]["max_frame_time"])
@@ -301,7 +314,7 @@ async def main():
             if challenge_day() != today['day']:
                 today = daily_challenge(base_config, definitions)
             menu.draw(screen, today, records, version + ':' + menu.character)
-            pygame.display.flip()
+            present()
             await asyncio.sleep(0)
             continue
 
@@ -407,7 +420,7 @@ async def main():
             else:
                 text("已暂停", (width//2, height//2-55), (122, 232, 213), title, True)
                 text("按 P 继续游戏", (width//2, height//2), centered=True)
-        pygame.display.flip()
+        present()
         await asyncio.sleep(0)
     pygame.quit()
 

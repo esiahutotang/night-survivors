@@ -172,3 +172,26 @@ Run python -m unittest and python tools/smoke_check.py (optionally --no-audio).
 The smoke check uses an isolated temporary record file, never your real bests.
 
 > AI生成
+
+## Browser loading screen
+
+The UTF-8 declaration precedes the embedded Python loader so browsers detect
+Chinese text before reading the startup script. The template and published HTML
+share the same loading screen. Environment setup, extraction and initialization
+show an indeterminate bar; game archive downloads show received bytes and a
+percentage only when a usable Content-Length is available. Encoded HTTP bodies
+and unknown lengths show received bytes without an invented percentage.
+The existing pygbag runtime responses remain untouched. The archive stream is
+counted as the runtime consumes it, without an extra download or buffered clone.
+The start button uses the runtime's existing audio gesture handler. The overlay
+closes after the first pygame frame; network/startup failures offer a retry.
+No daily challenge rules or personal-record versions change in this fix.
+
+Optional loader checks (Node.js built-ins only): `node tools/check_loading.cjs`.
+
+To refresh the checked-in game archives without changing the runtime loader,
+run `python tools/build_web_payload.py`. Verify them with
+`python tools/build_web_payload.py --check`. This includes every runtime module,
+data file, finished asset and sound; it excludes personal saves and working art.
+After payload changes, bump the archive query version in both default.tmpl and
+docs/index.html so cached browsers request the new payload.
